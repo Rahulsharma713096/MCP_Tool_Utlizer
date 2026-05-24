@@ -1,0 +1,733 @@
+# Production Deployment & Runtime Architecture
+
+You want the application to behave like a professional AI platform where:
+
+* One-click startup
+* Single `run.bat` / `run.sh`
+* Auto dependency checks
+* Auto environment validation
+* Unified logging
+* Security validation
+* Runtime monitoring
+* Recovery handling
+* Clean deployment
+* Production-safe execution
+
+This is the correct enterprise approach.
+
+---
+
+# 1. Production Deployment Architecture
+
+```text id="p5gvq6"
+┌─────────────────────────────────────┐
+│            run.bat / run.sh         │
+└─────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│       Environment Validator         │
+│                                     │
+│ ✓ Python installed                  │
+│ ✓ Node installed                    │
+│ ✓ Ollama installed                  │
+│ ✓ Ports available                   │
+│ ✓ GPU availability                  │
+│ ✓ Config validation                 │
+│ ✓ Required folders                  │
+└─────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│       Runtime Bootstrapper          │
+│                                     │
+│ ✓ Start backend                     │
+│ ✓ Start frontend                    │
+│ ✓ Start websocket                   │
+│ ✓ Start monitoring                  │
+│ ✓ Start log manager                 │
+└─────────────────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────┐
+│         Runtime Supervisor          │
+│                                     │
+│ ✓ Auto restart                      │
+│ ✓ Health checks                     │
+│ ✓ Crash recovery                    │
+│ ✓ Process cleanup                   │
+└─────────────────────────────────────┘
+```
+
+---
+
+# 2. Single Command Execution Design
+
+---
+
+# Windows
+
+## `run.bat`
+
+```bat id="d0hjnr"
+@echo off
+
+echo Starting AI Workspace...
+
+call scripts\check_env.bat
+
+if %ERRORLEVEL% neq 0 (
+    echo Environment validation failed
+    pause
+    exit /b
+)
+
+start cmd /k "cd apps\backend && python main.py"
+
+timeout /t 5
+
+start cmd /k "cd apps\frontend && npm run dev"
+
+echo AI Workspace Started
+pause
+```
+
+---
+
+# Linux/Mac
+
+## `run.sh`
+
+```bash id="zj99zv"
+#!/bin/bash
+
+echo "Starting AI Workspace"
+
+bash scripts/check_env.sh
+
+if [ $? -ne 0 ]; then
+    echo "Environment validation failed"
+    exit 1
+fi
+
+cd apps/backend && python main.py &
+
+sleep 5
+
+cd ../frontend && npm run dev
+```
+
+---
+
+# 3. Environment Validation System
+
+Critical feature.
+
+---
+
+# Checks Required
+
+| Check              | Purpose           |
+| ------------------ | ----------------- |
+| Python version     | backend support   |
+| Node version       | frontend build    |
+| Ollama installed   | local models      |
+| GPU available      | acceleration      |
+| Port availability  | avoid conflicts   |
+| Config files exist | prevent crashes   |
+| Disk space         | model loading     |
+| RAM availability   | runtime stability |
+
+---
+
+# Python Validation
+
+```python id="jxlgzy"
+import sys
+
+if sys.version_info < (3, 11):
+    raise Exception("Python 3.11+ required")
+```
+
+---
+
+# Ollama Validation
+
+```python id="gh0n7z"
+subprocess.run(["ollama", "--version"])
+```
+
+---
+
+# Port Validation
+
+```python id="m39c1x"
+import socket
+
+def is_port_free(port):
+    with socket.socket() as s:
+        return s.connect_ex(("localhost", port)) != 0
+```
+
+---
+
+# 4. Unified Logging System
+
+VERY important.
+
+---
+
+# Logging Architecture
+
+```text id="d5zxuv"
+logs/
+│
+├── backend/
+├── frontend/
+├── runtime/
+├── mcp/
+├── security/
+├── api/
+└── system/
+```
+
+---
+
+# Log Types
+
+| Log           | Purpose              |
+| ------------- | -------------------- |
+| app.log       | main backend         |
+| runtime.log   | Ollama runtime       |
+| mcp.log       | MCP execution        |
+| security.log  | auth/events          |
+| websocket.log | socket events        |
+| crash.log     | unhandled exceptions |
+
+---
+
+# Structured Logging
+
+Use:
+
+```python id="0zn92w"
+structlog
+```
+
+OR:
+
+```python id="0s0h4y"
+loguru
+```
+
+---
+
+# Example Logging
+
+```python id="7klg5j"
+logger.info(
+    "model_started",
+    model="llama3",
+    pid=1452
+)
+```
+
+---
+
+# 5. Runtime Supervisor System
+
+Enterprise-level feature.
+
+---
+
+# Responsibilities
+
+| Feature          | Purpose            |
+| ---------------- | ------------------ |
+| Auto restart     | crash recovery     |
+| Health checks    | runtime validation |
+| Zombie cleanup   | process management |
+| Timeout monitor  | stuck requests     |
+| Resource monitor | CPU/GPU protection |
+
+---
+
+# Process Monitoring
+
+Use:
+
+```python id="z65d4u"
+psutil
+```
+
+---
+
+# Auto Restart Example
+
+```python id="hvtgr6"
+if process_dead:
+    restart_service()
+```
+
+---
+
+# 6. Security Implementation
+
+Critical for production.
+
+---
+
+# Security Layers
+
+```text id="5j2jxm"
+Frontend Security
+    ↓
+API Gateway Security
+    ↓
+Authentication
+    ↓
+Authorization
+    ↓
+MCP Sandbox
+    ↓
+Runtime Isolation
+```
+
+---
+
+# 7. API Security
+
+---
+
+# JWT Authentication
+
+Use:
+
+```python id="2t7xtr"
+python-jose
+```
+
+---
+
+# Password Hashing
+
+Use:
+
+```python id="e6o0ew"
+bcrypt
+```
+
+---
+
+# Rate Limiting
+
+Use:
+
+```python id="tw7nlt"
+slowapi
+```
+
+---
+
+# API Validation
+
+Use:
+
+```python id="2zyf7j"
+Pydantic
+```
+
+---
+
+# 8. MCP Security
+
+MOST IMPORTANT AREA.
+
+---
+
+# MCP Risks
+
+| Risk                | Example         |
+| ------------------- | --------------- |
+| Arbitrary execution | dangerous shell |
+| File deletion       | rm -rf          |
+| Data leak           | env variables   |
+| Network abuse       | bot attacks     |
+
+---
+
+# Protection Methods
+
+## MCP Sandbox
+
+Run MCPs:
+
+* isolated process
+* limited permissions
+* restricted filesystem
+
+---
+
+# Restricted Commands
+
+```python id="1e9suv"
+ALLOWED_COMMANDS = [
+    "python",
+    "node"
+]
+```
+
+---
+
+# Filesystem Restrictions
+
+```python id="g8mgx8"
+ALLOWED_PATHS = [
+    "/workspace",
+    "/documents"
+]
+```
+
+---
+
+# Timeout Protection
+
+```python id="h7jjqn"
+asyncio.wait_for()
+```
+
+---
+
+# 9. Config Security
+
+---
+
+# Encrypt API Keys
+
+Use:
+
+```python id="d1dyz9"
+cryptography.fernet
+```
+
+---
+
+# Example
+
+```python id="vc84od"
+encrypted = cipher.encrypt(api_key.encode())
+```
+
+---
+
+# Config File Structure
+
+```text id="mv2rxv"
+configs/
+│
+├── providers.enc
+├── runtime.json
+├── ui.json
+└── security.json
+```
+
+---
+
+# 10. Deployment Modes
+
+---
+
+# Development Mode
+
+```text id="mjlwm8"
+Fast refresh
+Verbose logs
+Debug enabled
+```
+
+---
+
+# Production Mode
+
+```text id="x4v2y2"
+Optimized build
+Secure headers
+Minified assets
+Process supervisor
+```
+
+---
+
+# 11. Production Build Pipeline
+
+---
+
+# Frontend
+
+```bash id="5vbq83"
+npm run build
+```
+
+---
+
+# Backend
+
+```bash id="6m7r4l"
+uvicorn app.main:app --workers 4
+```
+
+---
+
+# Full Build
+
+```bash id="mql1y5"
+docker compose up --build
+```
+
+---
+
+# 12. Health Check System
+
+---
+
+# Health APIs
+
+```text id="gcr0g7"
+GET /health
+GET /health/runtime
+GET /health/mcp
+GET /health/providers
+```
+
+---
+
+# Response
+
+```json id="yx9g0z"
+{
+  "status": "healthy",
+  "ollama": true,
+  "database": true,
+  "mcps": 4
+}
+```
+
+---
+
+# 13. Runtime Resource Protection
+
+---
+
+# CPU Protection
+
+If CPU > 90%:
+
+```text id="c7o9lu"
+pause inactive models
+```
+
+---
+
+# RAM Protection
+
+If RAM critical:
+
+```text id="j8r9cn"
+auto unload model
+```
+
+---
+
+# GPU Protection
+
+```text id="q8z0mx"
+prevent multi-model overload
+```
+
+---
+
+# 14. Auto Recovery System
+
+---
+
+# Crash Recovery
+
+| Scenario         | Recovery     |
+| ---------------- | ------------ |
+| backend crash    | restart      |
+| websocket crash  | reconnect    |
+| MCP failure      | isolate      |
+| provider failure | fallback     |
+| runtime freeze   | kill/restart |
+
+---
+
+# 15. Production Folder Structure
+
+```text id="1p8db9"
+ai-workspace/
+│
+├── apps/
+│   ├── backend/
+│   └── frontend/
+│
+├── configs/
+├── logs/
+├── runtime/
+├── mcps/
+├── scripts/
+├── docker/
+├── backups/
+├── monitoring/
+└── security/
+```
+
+---
+
+# 16. Monitoring & Observability
+
+---
+
+# Metrics
+
+| Metric      | Tool       |
+| ----------- | ---------- |
+| CPU         | psutil     |
+| GPU         | pynvml     |
+| API latency | Prometheus |
+| Errors      | Sentry     |
+| Logs        | Loki       |
+
+---
+
+# Dashboard Features
+
+* live CPU graph
+* model memory
+* active MCPs
+* provider latency
+* websocket health
+
+---
+
+# 17. CI/CD Security Checks
+
+---
+
+# Pipeline
+
+```text id="5kkdnr"
+Lint
+↓
+Type check
+↓
+Security scan
+↓
+Unit tests
+↓
+Integration tests
+↓
+Build validation
+↓
+Deployment
+```
+
+---
+
+# Tools
+
+| Tool   | Purpose         |
+| ------ | --------------- |
+| Ruff   | Python lint     |
+| ESLint | TS lint         |
+| Bandit | Python security |
+| Safety | dependency scan |
+| Trivy  | container scan  |
+
+---
+
+# 18. Enterprise Production Features
+
+---
+
+# Recommended Advanced Features
+
+## Auto Update System
+
+Checks:
+
+```text id="j6v0aq"
+new MCP versions
+new providers
+new UI build
+```
+
+---
+
+## Backup System
+
+Auto backup:
+
+* configs
+* chats
+* MCP registry
+
+---
+
+## Audit Logs
+
+Track:
+
+```text id="d0vf7t"
+who started model
+who deleted MCP
+who changed config
+```
+
+---
+
+# 19. Recommended Production Stack
+
+| Layer      | Best Choice     |
+| ---------- | --------------- |
+| Runtime    | Ollama          |
+| Backend    | FastAPI         |
+| Frontend   | React           |
+| Packaging  | Tauri           |
+| Database   | SQLite/Postgres |
+| Logs       | Loguru          |
+| Monitoring | Prometheus      |
+| Security   | JWT + Fernet    |
+| Deployment | Docker          |
+
+---
+
+# 20. Final Enterprise Runtime Flow
+
+```text id="gxvukq"
+run.bat / run.sh
+      ↓
+Environment Validation
+      ↓
+Security Validation
+      ↓
+Config Validation
+      ↓
+Backend Startup
+      ↓
+Frontend Startup
+      ↓
+Runtime Supervisor
+      ↓
+Health Monitoring
+      ↓
+Live AI Workspace
+```
+
+This architecture is now equivalent to:
+
+* AI Runtime OS
+* Enterprise Agentic Platform
+* AI DevOps Workspace
+* Local AI Control Center
+* Multi-Provider AI Operating System

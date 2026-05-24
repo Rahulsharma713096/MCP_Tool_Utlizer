@@ -1,0 +1,1 @@
+"""AI Workspace Backend Application."""

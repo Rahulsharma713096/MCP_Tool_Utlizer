@@ -1,0 +1,52 @@
+{
+  "mcps": [
+    {
+      "id": "filesystem",
+      "name": "Filesystem MCP",
+      "type": "filesystem",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "python",
+      "args": ["mcps/filesystem_mcp.py"],
+      "capabilities": ["read_file", "write_file", "list_directory", "search_files"]
+    },
+    {
+      "id": "browser",
+      "name": "Browser MCP",
+      "type": "browser",
+      "enabled": false,
+      "transport": "http",
+      "endpoint": "http://localhost:3001",
+      "capabilities": ["navigate", "click", "type", "extract"]
+    },
+    {
+      "id": "github",
+      "name": "GitHub MCP",
+      "type": "github",
+      "enabled": false,
+      "transport": "http",
+      "endpoint": "https://api.github.com",
+      "capabilities": ["list_repos", "create_issue", "read_file", "search_code"]
+    },
+    {
+      "id": "database",
+      "name": "Database MCP",
+      "type": "database",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "python",
+      "args": ["mcps/database_mcp.py"],
+      "capabilities": ["query", "insert", "update", "delete", "schema"]
+    },
+    {
+      "id": "python-executor",
+      "name": "Python Executor",
+      "type": "python",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "python",
+      "args": ["mcps/python_executor_mcp.py"],
+      "capabilities": ["execute_python", "run_script", "install_package"]
+    }
+  ]
+}

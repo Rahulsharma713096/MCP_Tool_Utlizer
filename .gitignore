@@ -1,0 +1,32 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Runtime
+runtime/
+
+# Backups
+backups/
+
+# Data
+data/
+
+# Docker temp
+*.db
+*.sqlite
+
+# Environment
+.env
+
+# OS
+Thumbs.db
+.DS_Store
+

@@ -1,0 +1,26 @@
+{
+  "theme": "neon",
+  "sidebar_collapsed": false,
+  "font_size": 14,
+  "show_metrics": true,
+  "animations_enabled": true,
+  "language": "en",
+  "terminal": {
+    "font_size": 13,
+    "theme": "dark",
+    "scrollback_lines": 5000
+  },
+  "chat": {
+    "default_provider": "ollama",
+    "default_model": "llama3",
+    "max_history": 100,
+    "stream_tokens": true,
+    "show_timestamps": true
+  },
+  "monitoring": {
+    "refresh_interval_ms": 3000,
+    "show_cpu_graph": true,
+    "show_ram_gauge": true,
+    "show_gpu_metrics": true
+  }
+}

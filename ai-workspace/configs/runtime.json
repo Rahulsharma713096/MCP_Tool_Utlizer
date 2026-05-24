@@ -1,0 +1,32 @@
+{
+  "runtime": {
+    "model_idle_timeout_minutes": 10,
+    "max_cpu_percent": 90.0,
+    "max_ram_percent": 85.0,
+    "auto_unload_idle": true,
+    "enable_gpu_monitoring": true,
+    "monitoring_interval_seconds": 5,
+    "log_level": "INFO",
+    "enable_metrics": true,
+    "metrics_port": 9090
+  },
+  "ollama": {
+    "host": "http://localhost:11434",
+    "timeout_seconds": 300,
+    "auto_detect": true
+  },
+  "mcp": {
+    "sandbox_enabled": true,
+    "allowed_commands": ["python", "node", "python3", "npx"],
+    "blocked_commands": ["rm", "del", "format", "dd", "mkfs", "sudo", "chmod", "shutdown"],
+    "execution_timeout_seconds": 30,
+    "max_concurrent": 10
+  },
+  "security": {
+    "rate_limit": "100/minute",
+    "jwt_expiration_hours": 24,
+    "encrypt_api_keys": true,
+    "mcp_sandbox_enabled": true,
+    "allowed_paths": ["/workspace", "/documents", "/home", "/tmp"]
+  }
+}

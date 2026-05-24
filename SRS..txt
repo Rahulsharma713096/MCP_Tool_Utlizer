@@ -1,0 +1,887 @@
+# Advanced AI Workspace Platform — Full Architecture & Project Design
+
+You are essentially building a production-grade **AI Operations Workspace**:
+
+A local-first desktop/web application where users can:
+
+* Manage local LLMs via Ollama
+* Run/stop models dynamically
+* Manage MCP servers/tools from UI
+* Chat with selected model
+* Connect online providers (OpenRouter, Gemini, Z.ai, OpenAI, Claude, etc.)
+* Dynamically switch providers/models
+* Monitor runtime/CPU/RAM/GPU
+* Kill inactive model processes
+* Auto-detect installations
+* Configure providers via UI
+* Hot reload configs
+* Plugin-based architecture
+* Enterprise-level UX/UI
+
+---
+
+# Core Product Vision
+
+## Product Name
+
+Possible names:
+
+* Nexus AI Workspace
+* OmniMCP Studio
+* Local AI Runtime Manager
+* AI Control Center
+* ModelOps Desktop
+* MCP Runtime Studio
+
+---
+
+# High-Level System Architecture
+
+```text
+┌────────────────────────────────────────────┐
+│                FRONTEND UI                │
+│ React + TypeScript + Tailwind + Zustand   │
+│                                            │
+│ - Chat UI                                  │
+│ - MCP Manager                              │
+│ - Ollama Runtime Manager                   │
+│ - Online Provider Manager                  │
+│ - Logs + Monitoring                        │
+│ - System Metrics                           │
+│ - Config Dashboard                         │
+└────────────────────────────────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────┐
+│             FASTAPI BACKEND                │
+│                                            │
+│  API Gateway                               │
+│  WebSocket Runtime Engine                  │
+│  MCP Orchestrator                          │
+│  Ollama Runtime Controller                 │
+│  Provider Abstraction Layer                │
+│  Plugin Loader                             │
+│  Auth & Session Manager                    │
+│  Config Engine                             │
+│  Process Manager                           │
+│  Telemetry Engine                          │
+└────────────────────────────────────────────┘
+                    │
+──────────────────────────────────────────────
+                    │
+     ┌──────────────┼──────────────┐
+     ▼              ▼              ▼
+
+┌───────────┐  ┌────────────┐  ┌────────────┐
+│ Ollama    │  │ MCP Server │  │ Online APIs│
+│ Runtime   │  │ Registry   │  │ Providers  │
+└───────────┘  └────────────┘  └────────────┘
+
+     ▼              ▼              ▼
+
+┌────────────────────────────────────────────┐
+│          Local Storage Layer               │
+│ SQLite/Postgres + Redis + Config Files     │
+└────────────────────────────────────────────┘
+```
+
+---
+
+# Recommended Tech Stack
+
+## Frontend
+
+| Layer            | Tech               |
+| ---------------- | ------------------ |
+| UI Framework     | React + TypeScript |
+| Build Tool       | Vite               |
+| State Management | Zustand            |
+| Data Fetching    | TanStack Query     |
+| UI Components    | shadcn/ui          |
+| Styling          | TailwindCSS        |
+| Animations       | Framer Motion      |
+| Charts           | Recharts           |
+| Terminal UI      | xterm.js           |
+| Code Editor      | Monaco Editor      |
+| WebSocket        | native/ws          |
+| Notifications    | Sonner             |
+
+---
+
+## Backend
+
+| Layer             | Tech              |
+| ----------------- | ----------------- |
+| API               | FastAPI           |
+| Async Engine      | asyncio           |
+| Realtime          | WebSockets        |
+| ORM               | SQLAlchemy        |
+| Queue             | Celery/RQ         |
+| Process Manager   | psutil            |
+| Runtime Detection | subprocess        |
+| Monitoring        | Prometheus        |
+| Logs              | structlog         |
+| Config            | Pydantic Settings |
+| Security          | JWT/Auth          |
+
+---
+
+# Major Modules
+
+# 1. Ollama Runtime Manager
+
+This is the heart of local model control.
+
+---
+
+## Features
+
+### Detect Ollama Installation
+
+Backend checks:
+
+```bash
+ollama --version
+```
+
+If not installed:
+
+UI shows:
+
+* Install button
+* OS-specific guide
+* Download link
+* Auto setup assistant
+
+---
+
+## Fetch Installed Models
+
+Command:
+
+```bash
+ollama list
+```
+
+UI shows:
+
+* model name
+* size
+* quantization
+* runtime state
+* VRAM usage
+* CPU usage
+
+---
+
+## Start Model Runtime
+
+```bash
+ollama run llama3
+```
+
+OR API:
+
+```bash
+POST /api/generate
+```
+
+---
+
+## Kill Running Models
+
+Critical feature.
+
+Use:
+
+```python
+psutil.process_iter()
+```
+
+Find:
+
+```text
+ollama.exe
+```
+
+Then:
+
+```python
+process.kill()
+```
+
+---
+
+## Multi-Model Runtime Control
+
+User selects:
+
+```text
+[✓] llama3
+[ ] mistral
+[ ] deepseek
+```
+
+System:
+
+* starts selected model
+* unloads inactive models
+* frees RAM/VRAM
+
+---
+
+## Runtime Monitoring
+
+Live metrics:
+
+* CPU %
+* GPU %
+* RAM
+* VRAM
+* tokens/sec
+* latency
+* active sessions
+
+---
+
+# 2. MCP Manager System
+
+This becomes your plugin ecosystem.
+
+---
+
+# MCP Architecture
+
+```text
+MCP Registry
+    │
+    ├── Filesystem MCP
+    ├── Browser MCP
+    ├── GitHub MCP
+    ├── Database MCP
+    ├── Docker MCP
+    ├── Kubernetes MCP
+    ├── Python Executor MCP
+    └── Custom User MCP
+```
+
+---
+
+## MCP UI Features
+
+### Add MCP
+
+Form:
+
+```text
+Name
+Type
+Endpoint
+Transport
+Auth
+Capabilities
+```
+
+---
+
+## MCP Registry
+
+Stored in:
+
+```text
+configs/mcp_registry.json
+```
+
+Example:
+
+```json
+{
+  "mcps": [
+    {
+      "id": "filesystem",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "python",
+      "args": ["filesystem_mcp.py"]
+    }
+  ]
+}
+```
+
+---
+
+## MCP Runtime Actions
+
+| Action  | Function      |
+| ------- | ------------- |
+| Add     | register MCP  |
+| Remove  | delete MCP    |
+| Enable  | start MCP     |
+| Disable | stop MCP      |
+| Edit    | modify config |
+| Test    | health check  |
+| Logs    | live logs     |
+
+---
+
+# 3. Online Provider System
+
+This should be FULLY dynamic.
+
+---
+
+# Provider Abstraction Layer
+
+```text
+BaseProvider
+    │
+    ├── OpenRouterProvider
+    ├── GeminiProvider
+    ├── ZAIProvider
+    ├── OpenAIProvider
+    ├── ClaudeProvider
+```
+
+---
+
+# Config-Based Dynamic Providers
+
+```json
+{
+  "providers": [
+    {
+      "name": "OpenRouter",
+      "enabled": true,
+      "base_url": "https://openrouter.ai/api/v1",
+      "models": [
+        "deepseek/deepseek-r1",
+        "mistral-large"
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## UI Features
+
+### Provider Dashboard
+
+* add provider
+* remove provider
+* update API key
+* test connection
+* fetch available models
+* model latency test
+
+---
+
+# 4. Chat System
+
+Core user experience.
+
+---
+
+# Chat Architecture
+
+```text
+Chat UI
+   │
+WebSocket
+   │
+Backend Session Manager
+   │
+Selected Provider
+   │
+Selected Model
+   │
+MCP Tool Calls
+```
+
+---
+
+## Chat Features
+
+### Streaming Tokens
+
+Realtime token streaming.
+
+### MCP Tool Calling
+
+Example:
+
+```text
+User:
+"Open VSCode and read app.py"
+```
+
+Model:
+
+```text
+Calls Filesystem MCP
+```
+
+---
+
+## Session Memory
+
+Store:
+
+* conversations
+* embeddings
+* tool history
+
+---
+
+# 5. Process & Resource Manager
+
+Very important.
+
+---
+
+# Features
+
+## Live Resource Graphs
+
+Monitor:
+
+* CPU
+* GPU
+* VRAM
+* Threads
+* Token throughput
+
+---
+
+## Smart Runtime Optimization
+
+If inactive:
+
+```text
+Auto unload model after 10 mins
+```
+
+---
+
+## Process Cleanup
+
+Detect zombie processes.
+
+---
+
+## GPU Detection
+
+Use:
+
+```python
+nvidia-smi
+```
+
+OR:
+
+```python
+torch.cuda.is_available()
+```
+
+---
+
+# 6. Config Engine
+
+Fully dynamic system.
+
+---
+
+# Config Types
+
+```text
+providers.json
+models.json
+mcp_registry.json
+runtime.json
+ui_settings.json
+```
+
+---
+
+# Hot Reloading
+
+User changes config in UI:
+
+→ backend updates instantly
+
+---
+
+# 7. UI/UX Architecture
+
+You requested enterprise-level UI/UX.
+
+---
+
+# UI Layout
+
+```text
+┌────────────────────────────────────┐
+│ Top Navbar                         │
+├─────────────┬──────────────────────┤
+│ Sidebar     │ Main Workspace       │
+│             │                      │
+│ - Chat      │                      │
+│ - Ollama    │                      │
+│ - MCP       │                      │
+│ - Providers │                      │
+│ - Runtime   │                      │
+│ - Logs      │                      │
+│ - Settings  │                      │
+└─────────────┴──────────────────────┘
+```
+
+---
+
+# Advanced UI Features
+
+## Dynamic Themes
+
+* Neon
+* Glassmorphism
+* Cyberpunk
+* Minimal
+* Enterprise
+
+---
+
+## Interactive Runtime Buttons
+
+Button states:
+
+```text
+Idle → Blue
+Running → Green
+Error → Red
+Loading → Animated
+```
+
+---
+
+## Live Runtime Animation
+
+* token stream animation
+* CPU graph pulse
+* MCP activity glow
+
+---
+
+# 8. Database Design
+
+---
+
+# SQLite Schema
+
+## models
+
+```sql
+CREATE TABLE models (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    provider TEXT,
+    active BOOLEAN,
+    runtime_pid INTEGER
+);
+```
+
+---
+
+## mcps
+
+```sql
+CREATE TABLE mcps (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    enabled BOOLEAN,
+    config JSON
+);
+```
+
+---
+
+## chats
+
+```sql
+CREATE TABLE chats (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT,
+    role TEXT,
+    content TEXT,
+    timestamp DATETIME
+);
+```
+
+---
+
+# 9. Testing Architecture
+
+Critical for enterprise stability.
+
+---
+
+# Backend Tests
+
+## Runtime Tests
+
+```python
+test_ollama_detection()
+test_model_loading()
+test_model_kill()
+test_gpu_detection()
+```
+
+---
+
+## MCP Tests
+
+```python
+test_mcp_registration()
+test_mcp_execution()
+test_mcp_healthcheck()
+```
+
+---
+
+## Provider Tests
+
+```python
+test_openrouter_connection()
+test_gemini_connection()
+test_api_key_validation()
+```
+
+---
+
+# Frontend Tests
+
+Use:
+
+* Vitest
+* Playwright
+
+---
+
+## UI Tests
+
+```text
+✓ Runtime button changes
+✓ Dynamic updates
+✓ Theme switching
+✓ Chat streaming
+✓ MCP add/remove
+✓ Provider config
+```
+
+---
+
+# 10. Security Architecture
+
+---
+
+# Features
+
+## Encrypted API Keys
+
+Use:
+
+```python
+cryptography.fernet
+```
+
+---
+
+## Sandbox MCP Execution
+
+Prevent dangerous execution.
+
+---
+
+## Role-Based Access
+
+Admin/User mode.
+
+---
+
+# 11. DevOps Architecture
+
+---
+
+# Docker Stack
+
+```yaml
+services:
+  frontend:
+  backend:
+  redis:
+  postgres:
+```
+
+---
+
+# CI/CD
+
+Use:
+
+* GitHub Actions
+* Pytest
+* ESLint
+* Type Checking
+* Security Scan
+
+---
+
+# 12. Recommended Folder Structure
+
+```text
+ai-workspace/
+│
+├── apps/
+│   ├── frontend/
+│   └── backend/
+│
+├── packages/
+│   ├── shared-types/
+│   ├── ui-kit/
+│   └── sdk/
+│
+├── configs/
+│
+├── mcps/
+│
+├── docker/
+│
+├── scripts/
+│
+├── tests/
+│
+└── docs/
+```
+
+---
+
+# 13. Advanced Features You SHOULD Add
+
+---
+
+# AI Router
+
+Automatically choose:
+
+* local model
+* online model
+* fastest model
+* cheapest model
+
+---
+
+# Multi-Agent Support
+
+Agents:
+
+* coding
+* research
+* automation
+* browser
+
+---
+
+# Voice Support
+
+* Whisper STT
+* TTS
+
+---
+
+# RAG Integration
+
+* local document memory
+* vector search
+
+---
+
+# Visual Workflow Builder
+
+Drag/drop MCP pipelines.
+
+---
+
+# 14. Recommended UI Pages
+
+| Page            | Purpose              |
+| --------------- | -------------------- |
+| Dashboard       | Overview             |
+| Chat            | Main AI interaction  |
+| Ollama Manager  | Runtime control      |
+| MCP Studio      | Plugin manager       |
+| Providers       | Online model configs |
+| Runtime Monitor | CPU/GPU graphs       |
+| Logs            | Live logs            |
+| Settings        | Themes/config        |
+
+---
+
+# 15. Enterprise-Level Coding Ethics
+
+Your codebase should enforce:
+
+* SOLID principles
+* plugin isolation
+* typed APIs
+* modular architecture
+* no hardcoded secrets
+* accessibility
+* responsive design
+* clean UI state management
+* observability
+* graceful error handling
+
+---
+
+# Recommended Final Stack
+
+## BEST STACK
+
+| Layer             | Choice                 |
+| ----------------- | ---------------------- |
+| Frontend          | React + TypeScript     |
+| Backend           | FastAPI                |
+| Local Models      | Ollama                 |
+| Online Models     | OpenRouter/Gemini/Z.ai |
+| MCP               | Custom Registry        |
+| Database          | SQLite/Postgres        |
+| Monitoring        | Prometheus             |
+| Realtime          | WebSockets             |
+| Desktop Packaging | Tauri                  |
+
+---
+
+# Final Recommended Architecture
+
+```text
+Frontend UI
+   ↓
+Realtime Gateway
+   ↓
+AI Runtime Orchestrator
+   ↓
+Provider Manager
+   ↓
+Model Runtime Manager
+   ↓
+MCP Tool Layer
+   ↓
+System Resource Controller
+```
+
+This design is scalable enough to evolve into:
+
+* AI Operating System
+* Agentic Workspace
+* AI DevOps Platform
+* Autonomous AI Studio
+* Enterprise AI Control Plane

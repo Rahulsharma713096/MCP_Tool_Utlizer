@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-gray-800;
+  }
+
+  body {
+    @apply bg-gray-950 text-gray-100;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-gray-900/60 backdrop-blur-xl border border-gray-800/50 rounded-xl;
+  }
+
+  .glass-card {
+    @apply glass-panel p-4 hover:bg-gray-900/80 transition-all duration-200;
+  }
+
+  .neon-glow {
+    box-shadow: 0 0 15px rgba(34, 197, 94, 0.3), 0 0 30px rgba(34, 197, 94, 0.1);
+  }
+
+  .neon-glow-blue {
+    box-shadow: 0 0 15px rgba(14, 165, 233, 0.3), 0 0 30px rgba(14, 165, 233, 0.1);
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium 
+           transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+           active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg font-medium 
+           transition-all duration-200 border border-gray-700 disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg font-medium 
+           transition-all duration-200 disabled:opacity-50;
+  }
+
+  .badge {
+    @apply px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-active {
+    @apply bg-emerald-500/20 text-emerald-400 border border-emerald-500/30;
+  }
+
+  .badge-inactive {
+    @apply bg-gray-700/50 text-gray-400 border border-gray-600/30;
+  }
+
+  .badge-error {
+    @apply bg-red-500/20 text-red-400 border border-red-500/30;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-100 
+           placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 
+           focus:border-emerald-500 transition-all duration-200;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-400 hover:text-gray-100 
+           hover:bg-gray-800/60 transition-all duration-200 cursor-pointer;
+  }
+
+  .sidebar-item.active {
+    @apply bg-emerald-600/20 text-emerald-400 border border-emerald-600/30;
+  }
+
+  .metric-card {
+    @apply glass-card flex flex-col gap-1;
+  }
+
+  .metric-value {
+    @apply text-2xl font-bold text-gray-100;
+  }
+
+  .metric-label {
+    @apply text-xs text-gray-500 uppercase tracking-wider;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold text-gray-100;
+  }
+
+  .page-description {
+    @apply text-gray-500 mt-1;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-400;
+  }
+
+  .text-gradient-cyber {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyber-pink to-cyber-blue;
+  }
+}

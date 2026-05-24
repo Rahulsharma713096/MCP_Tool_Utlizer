@@ -1,0 +1,561 @@
+# Comprehensive Test Strategy — AI Workspace Platform
+
+This covers:
+
+* UI Testing
+* Backend Testing
+* API Testing
+* MCP Testing
+* Ollama Runtime Testing
+* Online Provider Testing
+* Data Flow Testing
+* Security Testing
+* Sanity Testing
+* Positive & Negative Cases
+* Performance Testing
+* Recovery Testing
+* Integration Testing
+* E2E Testing
+
+---
+
+# 1. Testing Architecture
+
+```text
+                    TEST LAYERS
+
+┌────────────────────────────────────┐
+│ E2E Testing (Playwright)           │
+├────────────────────────────────────┤
+│ Integration Testing                │
+├────────────────────────────────────┤
+│ API Testing                        │
+├────────────────────────────────────┤
+│ Backend Unit Testing               │
+├────────────────────────────────────┤
+│ Frontend Component Testing         │
+├────────────────────────────────────┤
+│ Database Testing                   │
+├────────────────────────────────────┤
+│ Runtime/Process Testing            │
+└────────────────────────────────────┘
+```
+
+---
+
+# 2. Frontend UI Test Cases
+
+Use:
+
+* Vitest
+* React Testing Library
+* Playwright
+
+---
+
+# Dashboard UI Testing
+
+| Test ID | Test Case                             | Type     |
+| ------- | ------------------------------------- | -------- |
+| UI-001  | Dashboard loads successfully          | Positive |
+| UI-002  | Sidebar navigation works              | Positive |
+| UI-003  | Invalid route redirects               | Negative |
+| UI-004  | Theme switch updates instantly        | Positive |
+| UI-005  | Broken widget handled gracefully      | Negative |
+| UI-006  | Responsive layout on mobile           | Positive |
+| UI-007  | UI handles backend disconnected state | Negative |
+
+---
+
+# Ollama Runtime UI Testing
+
+| Test ID | Test Case                                           | Type     |
+| ------- | --------------------------------------------------- | -------- |
+| OUI-001 | Detect installed Ollama                             | Positive |
+| OUI-002 | Show install guide if missing                       | Positive |
+| OUI-003 | Runtime button starts model                         | Positive |
+| OUI-004 | Stop button kills runtime                           | Positive |
+| OUI-005 | Invalid model name error shown                      | Negative |
+| OUI-006 | Runtime spinner shows loading                       | Positive |
+| OUI-007 | CPU graph updates realtime                          | Positive |
+| OUI-008 | Multiple model selection disabled if limit exceeded | Negative |
+| OUI-009 | GPU unavailable warning shown                       | Negative |
+| OUI-010 | Runtime logs auto refresh                           | Positive |
+
+---
+
+# MCP Manager UI Testing
+
+| Test ID   | Test Case                    | Type     |
+| --------- | ---------------------------- | -------- |
+| MCPUI-001 | Add MCP successfully         | Positive |
+| MCPUI-002 | Delete MCP                   | Positive |
+| MCPUI-003 | Edit MCP config              | Positive |
+| MCPUI-004 | Duplicate MCP prevented      | Negative |
+| MCPUI-005 | Invalid endpoint validation  | Negative |
+| MCPUI-006 | MCP status indicator updates | Positive |
+| MCPUI-007 | Disabled MCP grayed out      | Positive |
+| MCPUI-008 | Broken MCP shows error state | Negative |
+
+---
+
+# Chat UI Testing
+
+| Test ID    | Test Case                          | Type     |
+| ---------- | ---------------------------------- | -------- |
+| CHATUI-001 | Send message works                 | Positive |
+| CHATUI-002 | Streaming response visible         | Positive |
+| CHATUI-003 | Message history persists           | Positive |
+| CHATUI-004 | Empty message blocked              | Negative |
+| CHATUI-005 | WebSocket reconnects automatically | Positive |
+| CHATUI-006 | Long response scroll stable        | Positive |
+| CHATUI-007 | MCP tool call animation visible    | Positive |
+| CHATUI-008 | Invalid provider shows error       | Negative |
+
+---
+
+# Provider UI Testing
+
+| Test ID   | Test Case                          | Type     |
+| --------- | ---------------------------------- | -------- |
+| PROUI-001 | Add provider                       | Positive |
+| PROUI-002 | Delete provider                    | Positive |
+| PROUI-003 | Save API key encrypted             | Positive |
+| PROUI-004 | Invalid API key rejected           | Negative |
+| PROUI-005 | Provider healthcheck works         | Positive |
+| PROUI-006 | Dynamic config reload works        | Positive |
+| PROUI-007 | Disabled provider hidden from chat | Positive |
+
+---
+
+# 3. Backend API Test Cases
+
+Use:
+
+* Pytest
+* HTTPX
+* Async Testing
+
+---
+
+# Ollama Backend Tests
+
+| Test ID  | Test Case                        | Type     |
+| -------- | -------------------------------- | -------- |
+| OAPI-001 | Detect Ollama installation       | Positive |
+| OAPI-002 | Handle missing executable        | Negative |
+| OAPI-003 | Fetch model list                 | Positive |
+| OAPI-004 | Start runtime                    | Positive |
+| OAPI-005 | Kill runtime process             | Positive |
+| OAPI-006 | Invalid PID handled              | Negative |
+| OAPI-007 | Runtime timeout handled          | Negative |
+| OAPI-008 | Concurrent runtime requests safe | Positive |
+
+---
+
+# MCP Backend Tests
+
+| Test ID    | Test Case                   | Type     |
+| ---------- | --------------------------- | -------- |
+| MCPAPI-001 | Register MCP                | Positive |
+| MCPAPI-002 | Delete MCP                  | Positive |
+| MCPAPI-003 | Update MCP config           | Positive |
+| MCPAPI-004 | Invalid transport rejected  | Negative |
+| MCPAPI-005 | MCP healthcheck timeout     | Negative |
+| MCPAPI-006 | Duplicate MCP blocked       | Negative |
+| MCPAPI-007 | Disabled MCP cannot execute | Negative |
+
+---
+
+# Provider Backend Tests
+
+| Test ID  | Test Case               | Type     |
+| -------- | ----------------------- | -------- |
+| PAPI-001 | OpenRouter connect      | Positive |
+| PAPI-002 | Gemini connect          | Positive |
+| PAPI-003 | Z.ai connect            | Positive |
+| PAPI-004 | Invalid API key         | Negative |
+| PAPI-005 | Rate limit handled      | Negative |
+| PAPI-006 | Network timeout retry   | Positive |
+| PAPI-007 | Provider failover works | Positive |
+
+---
+
+# Chat Backend Tests
+
+| Test ID  | Test Case                     | Type     |
+| -------- | ----------------------------- | -------- |
+| CAPI-001 | Send chat request             | Positive |
+| CAPI-002 | Streaming response            | Positive |
+| CAPI-003 | Tool call execution           | Positive |
+| CAPI-004 | Invalid model rejected        | Negative |
+| CAPI-005 | WebSocket disconnect recovery | Positive |
+| CAPI-006 | Oversized payload blocked     | Negative |
+
+---
+
+# 4. Database Testing
+
+---
+
+# CRUD Tests
+
+| Test ID | Test Case                |
+| ------- | ------------------------ |
+| DB-001  | Insert model             |
+| DB-002  | Update model             |
+| DB-003  | Delete model             |
+| DB-004  | Insert MCP               |
+| DB-005  | Delete provider          |
+| DB-006  | Session persistence      |
+| DB-007  | Rollback on failure      |
+| DB-008  | Invalid schema migration |
+
+---
+
+# Data Integrity Tests
+
+| Test ID | Test Case                  |
+| ------- | -------------------------- |
+| DBI-001 | Foreign key validation     |
+| DBI-002 | Duplicate provider blocked |
+| DBI-003 | Null values validation     |
+| DBI-004 | Config JSON validation     |
+
+---
+
+# 5. Data Flow Testing
+
+Critical section.
+
+---
+
+# Ollama Data Flow
+
+```text
+UI
+ ↓
+API
+ ↓
+Runtime Controller
+ ↓
+ollama CLI
+ ↓
+Response
+ ↓
+UI update
+```
+
+---
+
+# Data Flow Test Cases
+
+| Test ID | Test Case                          |
+| ------- | ---------------------------------- |
+| DF-001  | UI → backend request valid         |
+| DF-002  | Backend → Ollama command valid     |
+| DF-003  | Runtime state sync correct         |
+| DF-004  | Realtime status updates            |
+| DF-005  | Process state persistence          |
+| DF-006  | WebSocket data consistency         |
+| DF-007  | MCP tool output returned correctly |
+| DF-008  | Config updates propagate instantly |
+
+---
+
+# 6. Sanity Testing
+
+Minimal verification after build deployment.
+
+---
+
+# Core Sanity Tests
+
+| Test ID | Test Case              |
+| ------- | ---------------------- |
+| SAN-001 | App launches           |
+| SAN-002 | Login works            |
+| SAN-003 | Dashboard renders      |
+| SAN-004 | Ollama detection works |
+| SAN-005 | Chat sends message     |
+| SAN-006 | MCP list loads         |
+| SAN-007 | Provider config opens  |
+| SAN-008 | Runtime monitor loads  |
+| SAN-009 | Logs page accessible   |
+| SAN-010 | No console crash       |
+
+---
+
+# 7. Positive Test Cases
+
+---
+
+# Example Positive Flows
+
+| Test ID | Flow                                 |
+| ------- | ------------------------------------ |
+| POS-001 | Install Ollama → Detect → Load model |
+| POS-002 | Add MCP → Enable → Execute           |
+| POS-003 | Add OpenRouter → Chat works          |
+| POS-004 | Switch models dynamically            |
+| POS-005 | Kill inactive process                |
+| POS-006 | Save UI theme                        |
+| POS-007 | Auto reconnect WebSocket             |
+
+---
+
+# 8. Negative Test Cases
+
+Critical for production stability.
+
+---
+
+# Runtime Negatives
+
+| Test ID | Scenario               |
+| ------- | ---------------------- |
+| NEG-001 | Ollama missing         |
+| NEG-002 | Corrupted model        |
+| NEG-003 | Runtime crash          |
+| NEG-004 | GPU unavailable        |
+| NEG-005 | Out of memory          |
+| NEG-006 | Invalid runtime config |
+
+---
+
+# MCP Negatives
+
+| Test ID | Scenario                |
+| ------- | ----------------------- |
+| NEG-007 | Broken MCP script       |
+| NEG-008 | Invalid MCP endpoint    |
+| NEG-009 | MCP timeout             |
+| NEG-010 | Unauthorized MCP access |
+
+---
+
+# Provider Negatives
+
+| Test ID | Scenario            |
+| ------- | ------------------- |
+| NEG-011 | Expired API key     |
+| NEG-012 | Provider API down   |
+| NEG-013 | Invalid model ID    |
+| NEG-014 | Rate limit exceeded |
+
+---
+
+# UI Negatives
+
+| Test ID | Scenario          |
+| ------- | ----------------- |
+| NEG-015 | Broken websocket  |
+| NEG-016 | Invalid route     |
+| NEG-017 | Missing config    |
+| NEG-018 | Invalid form data |
+
+---
+
+# 9. Security Testing
+
+---
+
+# Authentication Tests
+
+| Test ID | Test Case               |
+| ------- | ----------------------- |
+| SEC-001 | Invalid JWT blocked     |
+| SEC-002 | Expired session logout  |
+| SEC-003 | Unauthorized API denied |
+
+---
+
+# Injection Tests
+
+| Test ID | Test Case                 |
+| ------- | ------------------------- |
+| SEC-004 | SQL injection blocked     |
+| SEC-005 | Command injection blocked |
+| SEC-006 | MCP sandbox isolation     |
+
+---
+
+# Secrets Testing
+
+| Test ID | Test Case                |
+| ------- | ------------------------ |
+| SEC-007 | API keys encrypted       |
+| SEC-008 | Secrets hidden from logs |
+| SEC-009 | Secure config storage    |
+
+---
+
+# 10. Performance Testing
+
+---
+
+# Load Tests
+
+| Test ID  | Test Case                  |
+| -------- | -------------------------- |
+| PERF-001 | 100 concurrent chats       |
+| PERF-002 | 20 MCP executions          |
+| PERF-003 | Multi-model switching      |
+| PERF-004 | Large conversation history |
+| PERF-005 | Realtime metric updates    |
+
+---
+
+# Stress Tests
+
+| Test ID  | Test Case               |
+| -------- | ----------------------- |
+| PERF-006 | GPU overload            |
+| PERF-007 | RAM exhaustion          |
+| PERF-008 | Massive token stream    |
+| PERF-009 | Provider failover storm |
+
+---
+
+# 11. Recovery Testing
+
+---
+
+# Crash Recovery
+
+| Test ID | Test Case                |
+| ------- | ------------------------ |
+| REC-001 | Backend restart recovery |
+| REC-002 | Runtime crash recovery   |
+| REC-003 | DB reconnect             |
+| REC-004 | WebSocket reconnect      |
+| REC-005 | Config rollback          |
+
+---
+
+# 12. E2E Test Scenarios
+
+Use Playwright.
+
+---
+
+# E2E User Journey
+
+## Scenario 1 — First Time User
+
+```text
+Install app
+→ Detect Ollama missing
+→ Show installer
+→ Install Ollama
+→ Detect installation
+→ Load model
+→ Chat works
+```
+
+---
+
+## Scenario 2 — MCP Workflow
+
+```text
+Add MCP
+→ Validate config
+→ Enable MCP
+→ Chat triggers tool
+→ Tool output returns
+```
+
+---
+
+## Scenario 3 — Provider Workflow
+
+```text
+Add OpenRouter
+→ Save API key
+→ Fetch models
+→ Select model
+→ Chat successfully
+```
+
+---
+
+# 13. Automation Strategy
+
+---
+
+# CI/CD Pipeline Tests
+
+```text
+Pull Request
+   ↓
+Lint
+   ↓
+Unit Tests
+   ↓
+Integration Tests
+   ↓
+E2E Tests
+   ↓
+Build Verification
+   ↓
+Deploy
+```
+
+---
+
+# 14. Recommended Testing Stack
+
+| Area           | Tool          |
+| -------------- | ------------- |
+| Frontend       | Vitest        |
+| UI Interaction | Playwright    |
+| Backend        | Pytest        |
+| API            | HTTPX         |
+| Load Testing   | Locust        |
+| Security       | Bandit        |
+| Type Safety    | mypy          |
+| Linting        | Ruff + ESLint |
+
+---
+
+# 15. Advanced Enterprise Test Coverage
+
+---
+
+# Observability Tests
+
+| Test ID | Test Case            |
+| ------- | -------------------- |
+| OBS-001 | Logs generated       |
+| OBS-002 | Metrics collected    |
+| OBS-003 | Trace IDs propagated |
+
+---
+
+# Accessibility Tests
+
+| Test ID  | Test Case             |
+| -------- | --------------------- |
+| A11Y-001 | Keyboard navigation   |
+| A11Y-002 | Screen reader support |
+| A11Y-003 | Contrast validation   |
+
+---
+
+# Final Recommended Coverage Target
+
+| Area             | Coverage            |
+| ---------------- | ------------------- |
+| Backend          | 90%+                |
+| Frontend         | 80%+                |
+| Critical APIs    | 95%+                |
+| MCP Runtime      | 90%+                |
+| Security Modules | 100% critical paths |
+
+This testing structure is enterprise-grade and suitable for:
+
+* AI Runtime Platforms
+* Agentic AI Systems
+* Local AI Operating Systems
+* Enterprise AI Control Panels
+* Production AI DevTools
