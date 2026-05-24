@@ -1,0 +1,7 @@
+Future Workflow
+
+Whenever you update code:
+
+git add .
+git commit -m "updated backend and MCP configs"
+git push
