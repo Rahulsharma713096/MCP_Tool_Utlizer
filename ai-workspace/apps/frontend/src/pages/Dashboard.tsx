@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'import { Cpu, HardDrive, MemoryStick, Activity, Bot, Puzzle, Globe, Zap, TrendingUp, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Cpu, HardDrive, MemoryStick, Activity, Bot, Puzzle, Globe, Zap, TrendingUp, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { apiFetch, cn } from '@/lib/utils'
 import { useOllamaStore, useMCPStore, useProviderStore } from '@/store/store'
 
