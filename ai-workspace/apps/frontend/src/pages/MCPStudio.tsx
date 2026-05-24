@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Play, Square, TestTube, RefreshCw, Puzzle, Wifi, Terminal } from 'lucide-react'
+import { Plus, Trash2, Play, Square, TestTube, RefreshCw, Puzzle, Wifi, Terminal, Code, Copy, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn, getStatusDot } from '@/lib/utils'
 import { useMCPStore, type MCP } from '@/store/store'
@@ -10,6 +10,147 @@ const defaultMcps: MCP[] = [
   { id: 3, name: 'GitHub MCP', type: 'github', enabled: false, status: 'inactive', transport: 'http', endpoint: 'https://api.github.com' },
   { id: 4, name: 'Database MCP', type: 'database', enabled: false, status: 'inactive', transport: 'stdio' },
   { id: 5, name: 'Python Executor', type: 'python', enabled: false, status: 'inactive', transport: 'stdio' },
+]
+
+function ManualSetupGuide() {
+  const [expanded, setExpanded] = useState(false)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const copyToClipboard = async (json: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(json)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      // Fallback
+      const textarea = document.createElement('textarea')
+      textarea.value = json
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    }
+  }
+
+  return (
+    <div className="glass-panel overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-4 hover:bg-gray-800/30 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-cyan-500/10">
+            <Code className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="text-left">
+            <h3 className="text-sm font-semibold text-gray-200">Manual MCP Setup</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Quick-add popular MCP servers via npx — copy from the community</p>
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-500" /> : <ChevronDown className="w-4 h-4 text-gray-500" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 animate-slide-up">
+          <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+            You can manually add any MCP server by pasting the <code className="text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded text-[11px]">npx</code> command JSON from the MCP community.
+            Copy the JSON below and register a new MCP server with these settings, or paste the exact config into your MCP settings file.
+          </p>
+
+          <div className="space-y-3">
+            {MANUAL_SETUP_EXAMPLES.map((mcp) => {
+              const configJson = JSON.stringify({
+                name: mcp.name,
+                type: mcp.type,
+                transport: mcp.transport,
+                command: mcp.command,
+                args: mcp.args,
+              }, null, 2)
+              return (
+                <div key={mcp.name} className="rounded-lg border border-gray-800 bg-gray-900/50">
+                  <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-200">{mcp.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">{mcp.type}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-600">{mcp.command} {mcp.args?.join(' ')}</span>
+                      <button
+                        onClick={() => copyToClipboard(configJson, mcp.name)}
+                        className="p-1.5 rounded-md hover:bg-gray-800 transition-colors"
+                        title="Copy config JSON"
+                      >
+                        {copiedId === mcp.name ? (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5 text-gray-500" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <pre className="p-3 text-[11px] font-mono text-gray-400 overflow-x-auto">
+                    <code>{configJson}</code>
+                  </pre>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-4 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
+            <p className="text-xs text-emerald-300/80">
+              <strong className="text-emerald-400">Tip:</strong> After copying the JSON, click <strong>"Add MCP"</strong> above and enter the name, type, and command manually.
+              For production, add these to your <code className="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded text-[11px]">mcp_config.json</code> file.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const MANUAL_SETUP_EXAMPLES = [
+  {
+    name: 'Playwright MCP',
+    type: 'browser',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@playwright/mcp'],
+    description: 'Browser automation via Playwright',
+  },
+  {
+    name: 'SQLite MCP',
+    type: 'database',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@anthropic/mcp-sqlite', '--db', './data.db'],
+    description: 'Database access via natural language',
+  },
+  {
+    name: 'GitHub MCP',
+    type: 'github',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/github'],
+    description: 'GitHub API integration',
+  },
+  {
+    name: 'Filesystem MCP',
+    type: 'filesystem',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/filesystem', './workspace'],
+    description: 'File system access and management',
+  },
+  {
+    name: 'Memory MCP',
+    type: 'custom',
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', '@anthropic/mcp-memory'],
+    description: 'Persistent memory and knowledge graph',
+  },
 ]
 
 export default function MCPStudio() {
@@ -134,6 +275,9 @@ export default function MCPStudio() {
           </div>
         </div>
       )}
+
+      {/* Manual MCP Setup Guide */}
+      <ManualSetupGuide />
 
       {/* MCP Cards */}
       <div className="grid gap-4">

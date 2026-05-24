@@ -1,32 +1,71 @@
-# Python
+# === Python ===
 venv/
+.venv/
+env/
+.env/
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
 
-# Node
+# === Node.js / Frontend ===
 node_modules/
+.next/
+dist/
+build/
+.npm/
+.yarn/
 
-# Logs
+# === Environment ===
+.env
+.env.local
+.env.production
+
+# === IDE / Editor ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vim/
+
+# === OS ===
+Thumbs.db
+.DS_Store
+Desktop.ini
+ehthumbs.db
+
+# === Logs ===
 logs/
 *.log
 
-# Runtime
+# === Runtime / Data ===
 runtime/
-
-# Backups
-backups/
-
-# Data
 data/
-
-# Docker temp
+backups/
 *.db
 *.sqlite
+*.sqlite3
 
-# Environment
-.env
+# === Docker ===
+.docker/
+docker-compose.override.yml
 
-# OS
-Thumbs.db
-.DS_Store
+# === Configs (local overrides) ===
+configs/providers.local.json
+configs/runtime.local.json
+configs/ui.local.json
 
+# === Temporary ===
+tmp/
+temp/
+*.tmp

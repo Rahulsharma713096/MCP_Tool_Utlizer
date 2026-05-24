@@ -227,18 +227,15 @@ class TestAuthAPI:
         })
         token = login_resp.json()["access_token"]
 
-        response = client.post("/api/v1/auth/verify", json={
-            "token": token,
-        })
+        # Token is a query parameter in this endpoint
+        response = client.post(f"/api/v1/auth/verify?token={token}")
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is True
 
     def test_verify_token_invalid(self):
         """SEC-001: Negative - Verify invalid token"""
-        response = client.post("/api/v1/auth/verify", json={
-            "token": "invalid.token.here",
-        })
+        response = client.post("/api/v1/auth/verify?token=invalid.token.here")
         assert response.status_code == 200
         data = response.json()
         assert data["valid"] is False

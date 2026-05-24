@@ -246,6 +246,7 @@ export default function Chat() {
             <button
               onClick={handleSend}
               disabled={!input.trim()}
+              aria-label="Send message"
               className="btn-primary h-[44px] px-4 flex items-center gap-2"
             >
               <Send className="w-4 h-4" />

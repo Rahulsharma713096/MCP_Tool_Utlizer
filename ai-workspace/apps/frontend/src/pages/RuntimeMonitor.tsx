@@ -112,7 +112,7 @@ export default function RuntimeMonitor() {
             <span className="text-sm font-medium text-gray-300">CPU Usage History</span>
           </div>
           <span className={cn('text-sm font-bold', gaugeColor(metrics?.cpu_percent || 0))}>
-            {metrics?.cpu_percent.toFixed(1)}%
+            {metrics?.cpu_percent?.toFixed(1) ?? '0.0'}%
           </span>
         </div>
         <div className="h-24 flex items-end gap-0.5">

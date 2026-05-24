@@ -16,6 +16,26 @@ from core.logging import log_manager
 logger = log_manager.get_logger("ollama_service")
 
 
+def _run_command(cmd: list[str], timeout: int = 30) -> tuple[str, str]:
+    """Run a shell command synchronously via subprocess.run().
+    
+    Compatible with Python 3.14+ on all platforms (avoids asyncio.create_subprocess_exec issues on Windows).
+    Call via asyncio.to_thread() from async methods.
+    """
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.stdout, result.stderr
+    except subprocess.TimeoutExpired as e:
+        raise asyncio.TimeoutError(f"Command timed out after {timeout}s: {' '.join(cmd)}") from e
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Command not found: {cmd[0]}") from e
+
+
 class OllamaService:
     """Manages Ollama installation detection, model lifecycle, and runtime monitoring."""
 
@@ -26,13 +46,8 @@ class OllamaService:
     async def detect_ollama(self) -> bool:
         """Check if Ollama is installed and accessible."""
         try:
-            result = await asyncio.create_subprocess_exec(
-                "ollama", "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await asyncio.wait_for(result.communicate(), timeout=10)
-            version = stdout.decode().strip()
+            stdout, _ = await asyncio.to_thread(_run_command, ["ollama", "--version"], 10)
+            version = stdout.strip()
             logger.info("ollama_detected", version=version)
             return True
         except (FileNotFoundError, asyncio.TimeoutError, subprocess.CalledProcessError) as e:
@@ -42,18 +57,64 @@ class OllamaService:
     async def get_ollama_version(self) -> Optional[str]:
         """Get installed Ollama version."""
         try:
-            result = await asyncio.create_subprocess_exec(
-                "ollama", "--version",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await asyncio.wait_for(result.communicate(), timeout=10)
-            return stdout.decode().strip()
+            stdout, _ = await asyncio.to_thread(_run_command, ["ollama", "--version"], 10)
+            return stdout.strip()
         except Exception:
             return None
 
     async def list_models(self) -> list[dict]:
-        """Fetch installed models from Ollama."""
+        """Fetch installed models from Ollama.
+        
+        Tries HTTP API first, then falls back to `ollama list` CLI command.
+        """
+        # Try HTTP API first
+        models = await self._list_models_via_api()
+        if models:
+            return models
+
+        # Fallback: parse `ollama list` CLI output
+        logger.info("trying_cli_fallback")
+        try:
+            stdout, stderr = await asyncio.to_thread(_run_command, ["ollama", "list"], 15)
+            output = stdout.strip()
+            if not output or stderr.strip():
+                logger.warning("ollama_list_no_output", stderr=stderr.strip())
+                return []
+
+            lines = output.split("\n")
+            if len(lines) < 2:
+                return []
+
+            models = []
+            for line in lines[1:]:  # Skip header line
+                line = line.strip()
+                if not line:
+                    continue
+                # Use maxsplit=3 so "3.2 GB" stays together as one token
+                parts = line.split(maxsplit=3)
+                if len(parts) >= 3:
+                    # CLI returns human-readable dates like "2 days ago" —
+                    # clear it since frontend expects ISO format
+                    modified_at = ""
+
+                    models.append({
+                        "name": parts[0],
+                        "size": self._parse_ollama_size(parts[2]) if parts[2] != "0" else 0,
+                        "quantization": "unknown",
+                        "modified_at": modified_at,
+                    })
+
+            logger.info("models_fetched_via_cli", count=len(models))
+            return models
+        except (FileNotFoundError, asyncio.TimeoutError, subprocess.CalledProcessError) as e:
+            logger.warning("ollama_list_cli_failed", error=str(e))
+            return []
+        except Exception as e:
+            logger.error("ollama_list_cli_error", error=str(e))
+            return []
+
+    async def _list_models_via_api(self) -> list[dict]:
+        """Fetch installed models via Ollama HTTP API."""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(f"{self.ollama_host}/api/tags")
@@ -67,15 +128,32 @@ class OllamaService:
                             "quantization": model.get("details", {}).get("quantization", "unknown"),
                             "modified_at": model.get("modified_at"),
                         })
-                    logger.info("models_fetched", count=len(models))
-                    return models
-                return []
+                    if models:
+                        logger.info("models_fetched_via_api", count=len(models))
+                        return models
+            return []
         except httpx.ConnectError:
             logger.warning("ollama_api_unreachable")
             return []
         except Exception as e:
-            logger.error("fetch_models_error", error=str(e))
+            logger.error("fetch_models_api_error", error=str(e))
             return []
+
+    @staticmethod
+    def _parse_ollama_size(size_str: str) -> int:
+        """Parse Ollama size string (e.g. '4.7GB', '356MB') to bytes."""
+        try:
+            size_str = size_str.upper().replace("B", "").strip()
+            if size_str.endswith("G"):
+                return int(float(size_str[:-1]) * 1024**3)
+            elif size_str.endswith("M"):
+                return int(float(size_str[:-1]) * 1024**2)
+            elif size_str.endswith("K"):
+                return int(float(size_str[:-1]) * 1024)
+            else:
+                return int(float(size_str))
+        except (ValueError, IndexError):
+            return 0
 
     async def start_model(self, model_name: str) -> dict:
         """Start a model runtime via Ollama API."""
@@ -117,8 +195,8 @@ class OllamaService:
                 del self.running_processes[model_name]
                 return {"status": "force_stopped", "model": model_name}
         else:
-            # Try to find and kill any ollama process for this model
-            return await self._kill_ollama_process(model_name)
+            # Model not tracked in running_processes
+            return {"status": "not_found", "model": model_name}
 
     def _find_ollama_process(self, model_name: str) -> int:
         """Find the PID of an ollama process for the given model."""

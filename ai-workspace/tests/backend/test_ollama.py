@@ -22,26 +22,19 @@ class TestOllamaDetection:
 
     async def test_detect_ollama_installed(self, ollama_service):
         """OAPI-001: Positive - Detect installed Ollama"""
-        mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"ollama version 0.3.0\n", b"")
-        mock_process.stdout = MagicMock()
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+        with patch("services.ollama_service._run_command", return_value=("ollama version 0.3.0\n", "")):
             result = await ollama_service.detect_ollama()
             assert result is True
 
     async def test_detect_ollama_not_installed(self, ollama_service):
         """OAPI-002: Negative - Handle missing executable"""
-        with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError("ollama not found")):
+        with patch("services.ollama_service._run_command", side_effect=FileNotFoundError("ollama not found")):
             result = await ollama_service.detect_ollama()
             assert result is False
 
     async def test_get_ollama_version(self, ollama_service):
         """OAPI-001: Get Ollama version"""
-        mock_process = AsyncMock()
-        mock_process.communicate.return_value = (b"ollama version 0.3.0\n", b"")
-
-        with patch("asyncio.create_subprocess_exec", return_value=mock_process):
+        with patch("services.ollama_service._run_command", return_value=("ollama version 0.3.0\n", "")):
             version = await ollama_service.get_ollama_version()
             assert version == "ollama version 0.3.0"
 
@@ -68,8 +61,11 @@ class TestOllamaModelManagement:
             assert models[1]["name"] == "mistral"
 
     async def test_list_models_api_unreachable(self, ollama_service):
-        """OAPI-002: Negative - API unreachable"""
-        with patch("httpx.AsyncClient.get", side_effect=Exception("Connection refused")):
+        """OAPI-002: Negative - API unreachable + CLI fallback fails"""
+        with (
+            patch("httpx.AsyncClient.get", side_effect=httpx.ConnectError("Connection refused")),
+            patch("services.ollama_service._run_command", side_effect=FileNotFoundError("ollama not found")),
+        ):
             models = await ollama_service.list_models()
             assert models == []
 

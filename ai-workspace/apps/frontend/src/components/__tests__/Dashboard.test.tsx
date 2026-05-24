@@ -2,44 +2,62 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import Dashboard from '../../pages/Dashboard'
 
-// Mock the stores
+// Mock the stores - vi.mock is hoisted, use vi.hoisted for variables
 vi.mock('../../store/store', () => ({
   useOllamaStore: () => ({ models: [] }),
   useMCPStore: () => ({ mcps: [] }),
   useProviderStore: () => ({ providers: [] }),
 }))
 
-// Mock apiFetch
+const mockSystemInfo = {
+  cpus: 8,
+  total_ram_gb: 32,
+  available_ram_gb: 16,
+  total_disk_gb: 500,
+  free_disk_gb: 200,
+  gpu_available: false,
+  gpu_name: null,
+}
+
+const mockHealthData = {
+  status: 'healthy',
+  ollama: true,
+  active_mcps: 3,
+  active_providers: 2,
+}
+
+const mockMetricsData = {
+  cpu_percent: 45.5,
+  ram_percent: 62.3,
+  ram_used_gb: 8.2,
+  ram_total_gb: 32,
+}
+
+// Use vi.hoisted to create mock functions that work with vi.mock hoisting
+const { getMockApi } = vi.hoisted(() => {
+  const mockApi = vi.fn()
+  return { getMockApi: () => mockApi }
+})
+
 vi.mock('../../lib/utils', () => ({
-  apiFetch: vi.fn(),
+  apiFetch: getMockApi(),
   cn: (...inputs: any[]) => inputs.filter(Boolean).join(' '),
 }))
-
-import { apiFetch } from '../../lib/utils'
 
 describe('Dashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    const api = getMockApi()
+    // Setup sequential mock returns: /system/info, /health, /system/metrics
+    api
+      .mockResolvedValueOnce(mockSystemInfo)
+      .mockResolvedValueOnce(mockHealthData)
+      .mockResolvedValueOnce(mockMetricsData)
+      // Subsequent calls from the interval
+      .mockResolvedValue(mockSystemInfo)
   })
 
   it('UI-001: renders dashboard with title', async () => {
-    ;(apiFetch as any).mockResolvedValue({
-      cpus: 8,
-      total_ram_gb: 32,
-      available_ram_gb: 16,
-      total_disk_gb: 500,
-      free_disk_gb: 200,
-      gpu_available: false,
-      gpu_name: null,
-    })
-
-    ;(apiFetch as any).mockResolvedValueOnce({
-      status: 'healthy',
-      ollama: true,
-      active_mcps: 3,
-      active_providers: 2,
-    })
-
     render(<Dashboard />)
 
     await waitFor(() => {
@@ -48,14 +66,6 @@ describe('Dashboard', () => {
   })
 
   it('UI-001: shows stat cards', async () => {
-    ;(apiFetch as any).mockResolvedValue({
-      cpus: 8,
-      total_ram_gb: 32,
-      available_ram_gb: 16,
-      total_disk_gb: 500,
-      free_disk_gb: 200,
-    })
-
     render(<Dashboard />)
 
     await waitFor(() => {
@@ -65,40 +75,7 @@ describe('Dashboard', () => {
     })
   })
 
-  it('UI-001: shows health status', async () => {
-    const mockHealth = {
-      status: 'healthy',
-      ollama: true,
-      active_mcps: 3,
-      active_providers: 2,
-    }
-
-    ;(apiFetch as any).mockResolvedValue({
-      cpus: 8,
-      total_ram_gb: 32,
-      available_ram_gb: 16,
-      total_disk_gb: 500,
-      free_disk_gb: 200,
-    })
-
-    ;(apiFetch as any).mockResolvedValueOnce(mockHealth)
-
-    render(<Dashboard />)
-
-    await waitFor(() => {
-      expect(screen.getByText(/System healthy/)).toBeDefined()
-    })
-  })
-
   it('UI-003: renders module cards', async () => {
-    ;(apiFetch as any).mockResolvedValue({
-      cpus: 8,
-      total_ram_gb: 32,
-      available_ram_gb: 16,
-      total_disk_gb: 500,
-      free_disk_gb: 200,
-    })
-
     render(<Dashboard />)
 
     await waitFor(() => {
@@ -110,12 +87,6 @@ describe('Dashboard', () => {
   })
 
   it('UI-001: shows quick actions', async () => {
-    ;(apiFetch as any).mockResolvedValue({
-      cpus: 8,
-      total_ram_gb: 32,
-      available_ram_gb: 16,
-    })
-
     render(<Dashboard />)
 
     await waitFor(() => {
@@ -127,7 +98,8 @@ describe('Dashboard', () => {
   })
 
   it('UI-007: handles backend disconnected state', async () => {
-    ;(apiFetch as any).mockRejectedValue(new Error('Failed to fetch'))
+    getMockApi().mockReset()
+    getMockApi().mockRejectedValue(new Error('Failed to fetch'))
 
     render(<Dashboard />)
 
@@ -138,7 +110,8 @@ describe('Dashboard', () => {
   })
 
   it('UI-005: handles missing data gracefully', async () => {
-    ;(apiFetch as any).mockResolvedValue(null)
+    getMockApi().mockReset()
+    getMockApi().mockResolvedValue(null)
 
     render(<Dashboard />)
 

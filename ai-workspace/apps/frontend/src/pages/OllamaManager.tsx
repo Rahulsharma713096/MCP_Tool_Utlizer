@@ -15,6 +15,7 @@ export default function OllamaManager() {
   const { installed, version, models, loading, setInstalled, setVersion, setModels, setLoading } = useOllamaStore()
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [starting, setStarting] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
 
   useEffect(() => {
     checkOllama()
@@ -22,17 +23,22 @@ export default function OllamaManager() {
 
   const checkOllama = async () => {
     setLoading(true)
+    setApiError(null)
     try {
       const detection = await apiFetch<{ installed: boolean; version: string | null }>('/ollama/detect')
       setInstalled(detection.installed)
       setVersion(detection.version)
 
       if (detection.installed) {
-        const modelsData = await apiFetch<{ models: OllamaModel[] }>('/ollama/models')
+        const modelsData = await apiFetch<{ models: OllamaModel[]; count?: number }>('/ollama/models')
         setOllamaModels(modelsData.models)
+        if (modelsData.models.length === 0) {
+          setApiError('Ollama is installed but no models found. Run "ollama pull <model>" in your terminal to download models.')
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Ollama check failed:', err)
+      setApiError(`Failed to connect to backend: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -113,6 +119,18 @@ export default function OllamaManager() {
         </div>
       </div>
 
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+          <div className="text-sm text-yellow-300/90">{apiError}</div>
+          <button onClick={checkOllama} className="ml-auto btn-secondary text-xs flex items-center gap-1 px-3 py-1.5">
+            <RotateCw className="w-3 h-3" />
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
@@ -157,7 +175,7 @@ export default function OllamaManager() {
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-gray-500">{formatBytes(model.size)}</span>
                         <span className="text-xs text-gray-600">{model.quantization}</span>
-                        <span className="text-xs text-gray-600">{new Date(model.modified_at).toLocaleDateString()}</span>
+                        <span className="text-xs text-gray-600">{model.modified_at ? new Date(model.modified_at).toLocaleDateString() : '—'}</span>
                       </div>
                     </div>
                   </div>

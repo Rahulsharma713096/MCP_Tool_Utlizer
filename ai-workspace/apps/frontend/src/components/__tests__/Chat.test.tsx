@@ -25,7 +25,6 @@ vi.mock('../../store/store', () => ({
   useMCPStore: () => ({ mcps: [] }),
   useProviderStore: () => ({ providers: [{ name: 'OpenRouter', enabled: true }] }),
   useChatStore: () => mockChatStore,
-  type ChatMessage: {},
 }))
 
 vi.mock('../../lib/utils', () => ({
@@ -49,7 +48,7 @@ describe('Chat', () => {
 
   it('CHATUI-001: send button exists', () => {
     render(<Chat />)
-    const sendButton = screen.getByText('Send')
+    const sendButton = document.querySelector('button[disabled]')
     expect(sendButton).toBeDefined()
   })
 

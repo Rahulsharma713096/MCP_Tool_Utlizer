@@ -3,6 +3,7 @@
 import asyncio
 import platform
 import shutil
+import subprocess
 from typing import Optional
 from datetime import datetime, timezone
 
@@ -12,6 +13,24 @@ from config.settings import settings
 from core.logging import log_manager
 
 logger = log_manager.get_logger("runtime_service")
+
+
+def _run_command(cmd: list[str], timeout: int = 30) -> tuple[str, str]:
+    """Run a shell command synchronously via subprocess.run().
+    Portable across all platforms and Python versions.
+    """
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return result.stdout, result.stderr
+    except subprocess.TimeoutExpired as e:
+        raise asyncio.TimeoutError(f"Command timed out: {' '.join(cmd)}") from e
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"Command not found: {cmd[0]}") from e
 
 
 class RuntimeService:
@@ -111,14 +130,12 @@ class RuntimeService:
     async def _detect_gpu(self) -> dict:
         """Detect GPU availability."""
         try:
-            # Try nvidia-smi
-            proc = await asyncio.create_subprocess_exec(
-                "nvidia-smi", "--query-gpu=name", "--format=csv,noheader",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            stdout, _ = await asyncio.to_thread(
+                _run_command,
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                5,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
-            gpu_name = stdout.decode().strip()
+            gpu_name = stdout.strip()
             if gpu_name:
                 return {"gpu_available": True, "gpu_name": gpu_name}
         except (FileNotFoundError, asyncio.TimeoutError, Exception):
@@ -137,15 +154,12 @@ class RuntimeService:
     async def _get_gpu_metrics(self) -> dict:
         """Get GPU metrics if available."""
         try:
-            proc = await asyncio.create_subprocess_exec(
-                "nvidia-smi",
-                "--query-gpu=utilization.gpu,memory.used",
-                "--format=csv,noheader,nounits",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            stdout, _ = await asyncio.to_thread(
+                _run_command,
+                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used", "--format=csv,noheader,nounits"],
+                5,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
-            parts = stdout.decode().strip().split(", ")
+            parts = stdout.strip().split(", ")
             if len(parts) >= 2:
                 return {
                     "gpu_percent": float(parts[0]),

@@ -73,9 +73,9 @@ export default function Dashboard() {
     },
     {
       label: 'CPU Usage',
-      value: metrics ? `${metrics.cpu_percent.toFixed(1)}%` : '—',
+      value: metrics?.cpu_percent != null ? `${metrics.cpu_percent.toFixed(1)}%` : '—',
       icon: Activity,
-      color: metrics?.cpu_percent > 80 ? 'text-red-400' : 'text-emerald-400',
+      color: (metrics?.cpu_percent ?? 0) > 80 ? 'text-red-400' : 'text-emerald-400',
       bg: 'bg-emerald-500/10',
     },
   ]
