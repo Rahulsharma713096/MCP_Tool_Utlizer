@@ -27,6 +27,8 @@ logger = log_manager.get_logger("api")
 ollama_service = OllamaService()
 mcp_service = MCPService()
 
+# Wire MCP service into chat service for tool integration
+chat_service.mcp_service = mcp_service
 
 # ============== Health & System ==============
 
@@ -149,27 +151,44 @@ async def delete_mcp(mcp_id: int):
 
 
 @router.post("/mcps/{mcp_id}/enable")
-async def enable_mcp(mcp_id: int):
-    """Enable an MCP server."""
+async def enable_mcp(mcp_id: int, config: MCPCreate):
+    """Enable an MCP server.
+    Accepts the full MCP configuration (command, args, transport) to start the process.
+    """
     from models.database import MCP
-    mcp = MCP(id=mcp_id, name=f"mcp-{mcp_id}", command="python", args=[], transport="stdio")
-    # In production, fetch from DB
+    mcp = MCP(
+        id=mcp_id,
+        name=config.name,
+        command=config.command or "",
+        args=config.args,
+        transport=config.transport,
+        type=config.type,
+        endpoint=config.endpoint,
+        enabled=True,
+    )
     return await mcp_service.enable_mcp(mcp)
 
 
 @router.post("/mcps/{mcp_id}/disable")
 async def disable_mcp(mcp_id: int):
     """Disable an MCP server."""
-    from models.database import MCP
-    mcp = MCP(id=mcp_id, name=f"mcp-{mcp_id}", command="python", args=[], transport="stdio")
-    return await mcp_service.disable_mcp(mcp)
+    return await mcp_service.stop_mcp(mcp_id)
 
 
 @router.get("/mcps/{mcp_id}/test")
 async def test_mcp(mcp_id: int):
     """Test MCP connectivity."""
     from models.database import MCP
-    mcp = MCP(id=mcp_id, name=f"mcp-{mcp_id}", command="python", args=[], transport="http", endpoint="http://localhost")
+    info = mcp_service._mcp_info.get(mcp_id, {})
+    mcp = MCP(
+        id=mcp_id,
+        name=info.get("name", f"mcp-{mcp_id}"),
+        command=info.get("command", ""),
+        args=[],
+        transport=info.get("transport", "stdio"),
+        type=info.get("type", "custom"),
+        endpoint=info.get("endpoint"),
+    )
     return await mcp_service.test_mcp(mcp)
 
 

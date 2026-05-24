@@ -184,17 +184,64 @@ export default function MCPStudio() {
     toast.success(`Added MCP: ${newMCP.name}`)
   }
 
-  const toggleMCPStatus = (mcp: MCP) => {
+  const toggleMCPStatus = async (mcp: MCP) => {
     toggleMcp(mcp.id)
-    const newStatus = !mcp.enabled ? 'active' : 'inactive'
-    toast.success(`${mcp.enabled ? 'Disabled' : 'Enabled'} MCP: ${mcp.name}`)
+    const wasEnabled = mcp.enabled
+
+    if (wasEnabled) {
+      // Disable: stop the MCP server via API
+      try {
+        const res = await fetch(`/api/v1/mcps/${mcp.id}/disable`, { method: 'POST' })
+        const data = await res.json()
+        toast.success(`Disabled MCP: ${mcp.name}`)
+      } catch (err) {
+        toast.error(`Failed to disable: ${err}`)
+        toggleMcp(mcp.id) // revert
+      }
+    } else {
+      // Enable: start the MCP server via API with full config
+      try {
+        const res = await fetch(`/api/v1/mcps/${mcp.id}/enable`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: mcp.name,
+            type: mcp.type,
+            transport: mcp.transport,
+            command: mcp.type === 'filesystem' ? 'npx' : 'npx',
+            args: ['-y', `@modelcontextprotocol/${mcp.type}`],
+            endpoint: mcp.endpoint || null,
+          }),
+        })
+        const data = await res.json()
+        if (data.status === 'started' || data.status === 'already_running') {
+          toast.success(`Enabled MCP: ${mcp.name} (PID: ${data.pid || 'N/A'})`)
+        } else {
+          toast.error(`Failed to enable: ${data.message || 'Unknown error'}`)
+          toggleMcp(mcp.id) // revert
+        }
+      } catch (err) {
+        toast.error(`Failed to enable: ${err}`)
+        toggleMcp(mcp.id) // revert
+      }
+    }
   }
 
-  const testMCP = (mcp: MCP) => {
+  const testMCP = async (mcp: MCP) => {
     toast.success(`Testing ${mcp.name}...`)
-    setTimeout(() => {
-      toast.success(`${mcp.name} responded OK`)
-    }, 1000)
+    try {
+      const res = await fetch(`/api/v1/mcps/${mcp.id}/test`)
+      const data = await res.json()
+      if (data.status === 'healthy') {
+        toast.success(`${mcp.name} responded OK`)
+      } else if (data.status === 'inactive') {
+        toast.warning(`${mcp.name} is inactive (enable it first)`)
+      } else {
+        toast.error(`${mcp.name}: ${data.status}`)
+      }
+    } catch (err) {
+      toast.error(`Test failed: ${err}`)
+    }
   }
 
   const transportIcons: Record<string, any> = {

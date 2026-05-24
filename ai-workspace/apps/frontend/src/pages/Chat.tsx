@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, StopCircle, Sparkles, Trash2 } from 'lucide-react'
+import { Send, Bot, User, StopCircle, Sparkles, Trash2, Wrench, CheckCircle2, XCircle } from 'lucide-react'
 import { useChatStore, type ChatMessage } from '@/store/store'
 import { cn, formatTimestamp } from '@/lib/utils'
 
@@ -51,13 +51,34 @@ export default function Chat() {
             content: data.content,
             timestamp: new Date().toISOString(),
           })
-        } else if (data.type === 'done') {
-          setStreaming(false)
+        } else if (data.type === 'tool_call') {
+          // LLM requested a tool call
+          const args = typeof data.args === 'string' ? data.args : JSON.stringify(data.args, null, 2)
           addMessage({
-            role: 'assistant',
-            content: data.content,
+            role: 'tool',
+            content: `🔧 **Tool Call:** \`${data.name}\`\n\`\`\`json\n${args}\n\`\`\``,
             timestamp: new Date().toISOString(),
           })
+        } else if (data.type === 'tool_result') {
+          // Tool execution result
+          const resultStr = typeof data.content === 'string' && data.content.length > 500
+            ? data.content.substring(0, 500) + '...'
+            : (typeof data.content === 'string' ? data.content : JSON.stringify(data.content))
+          addMessage({
+            role: 'tool',
+            content: `✅ **Tool Result:** \`${data.name}\`\n\`\`\`\n${resultStr}\n\`\`\``,
+            timestamp: new Date().toISOString(),
+          })
+        } else if (data.type === 'done') {
+          setStreaming(false)
+          // Only add if there's actual content (don't add empty done for tool-only responses)
+          if (data.content) {
+            addMessage({
+              role: 'assistant',
+              content: data.content,
+              timestamp: new Date().toISOString(),
+            })
+          }
         } else if (data.type === 'error') {
           setStreaming(false)
           addMessage({
@@ -176,7 +197,19 @@ export default function Chat() {
               msg.role === 'user' ? 'justify-end' : 'justify-start'
             )}
           >
-            {msg.role !== 'user' && (
+            {msg.role === 'user' && (
+              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center shrink-0">
+                <User className="w-4 h-4 text-cyan-400" />
+              </div>
+            )}
+
+            {msg.role === 'tool' && (
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                <Wrench className="w-4 h-4 text-amber-400" />
+              </div>
+            )}
+
+            {msg.role === 'assistant' && (
               <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-emerald-400" />
               </div>
@@ -187,18 +220,26 @@ export default function Chat() {
                 'max-w-[70%] rounded-2xl px-4 py-3',
                 msg.role === 'user'
                   ? 'bg-emerald-600/20 border border-emerald-500/20 text-gray-200'
+                  : msg.role === 'tool'
+                  ? 'bg-amber-500/5 border border-amber-500/15 text-gray-300 font-mono text-xs'
                   : 'bg-gray-800/50 border border-gray-700/30 text-gray-300'
               )}
             >
-              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'tool' ? (
+                <div className="whitespace-pre-wrap">
+                  {msg.content.split('```').map((part, i) =>
+                    i % 2 === 0 ? (
+                      <span key={i}>{part}</span>
+                    ) : (
+                      <code key={i} className="block bg-gray-900/50 rounded p-2 my-1 overflow-x-auto text-[11px]">{part}</code>
+                    )
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              )}
               <p className="text-xs text-gray-600 mt-2">{formatTimestamp(msg.timestamp)}</p>
             </div>
-
-            {msg.role === 'user' && (
-              <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center shrink-0">
-                <User className="w-4 h-4 text-cyan-400" />
-              </div>
-            )}
           </div>
         ))}
 
