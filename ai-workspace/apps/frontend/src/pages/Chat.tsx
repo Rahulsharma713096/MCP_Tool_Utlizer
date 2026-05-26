@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, StopCircle, Sparkles, Trash2, Wrench, CheckCircle2, XCircle } from 'lucide-react'
-import { useChatStore, type ChatMessage } from '@/store/store'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Send, Bot, User, StopCircle, Sparkles, Trash2, Wrench, CheckCircle2, XCircle, ChevronDown, Cpu, Globe } from 'lucide-react'
+import { useChatStore, useOllamaStore, useProviderStore, type ChatMessage } from '@/store/store'
 import { cn, formatTimestamp } from '@/lib/utils'
 
 export default function Chat() {
@@ -22,6 +22,7 @@ export default function Chat() {
   const [ws, setWs] = useState<WebSocket | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const accumulatedTokens = useRef('')
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -45,12 +46,8 @@ export default function Chat() {
       try {
         const data = JSON.parse(event.data)
         if (data.type === 'token') {
-          // Update the last assistant message with accumulated content
-          addMessage({
-            role: 'assistant',
-            content: data.content,
-            timestamp: new Date().toISOString(),
-          })
+          // Accumulate tokens locally — don't update store until done
+          accumulatedTokens.current += data.content
         } else if (data.type === 'tool_call') {
           // LLM requested a tool call
           const args = typeof data.args === 'string' ? data.args : JSON.stringify(data.args, null, 2)
@@ -70,15 +67,16 @@ export default function Chat() {
             timestamp: new Date().toISOString(),
           })
         } else if (data.type === 'done') {
+          // Streaming done — add the full accumulated response to the store at once
           setStreaming(false)
-          // Only add if there's actual content (don't add empty done for tool-only responses)
-          if (data.content) {
+          if (accumulatedTokens.current.trim()) {
             addMessage({
               role: 'assistant',
-              content: data.content,
+              content: accumulatedTokens.current,
               timestamp: new Date().toISOString(),
             })
           }
+          accumulatedTokens.current = ''
         } else if (data.type === 'error') {
           setStreaming(false)
           addMessage({
@@ -98,7 +96,15 @@ export default function Chat() {
     }
 
     socket.onclose = () => {
-      console.log('WebSocket disconnected')
+      // If there's partial accumulated content when connection drops, show it
+      if (accumulatedTokens.current.trim()) {
+        addMessage({
+          role: 'assistant',
+          content: accumulatedTokens.current,
+          timestamp: new Date().toISOString(),
+        })
+        accumulatedTokens.current = ''
+      }
       setStreaming(false)
     }
 
@@ -135,7 +141,73 @@ export default function Chat() {
     }
   }
 
-  const providers = ['ollama', 'openrouter', 'gemini', 'openai']
+  // Build unified model option list from local Ollama + online providers
+  const ollamaModels = useOllamaStore((s) => s.models)
+  const providerList = useProviderStore((s) => s.providers)
+  const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  interface ModelOption {
+    label: string
+    provider: string
+    group: string
+    running?: boolean
+  }
+
+  const modelOptions = useMemo<{ group: string; options: ModelOption[] }[]>(() => {
+    const groups: { group: string; options: ModelOption[] }[] = []
+
+    // Local models from Ollama
+    const localModels: ModelOption[] = ollamaModels.map((m) => ({
+      label: m.name,
+      provider: 'ollama',
+      group: 'Local Models',
+      running: m.running,
+    }))
+    if (localModels.length > 0) {
+      groups.push({ group: 'Local Models', options: localModels })
+    }
+
+    // Online models from providers
+    for (const prov of providerList) {
+      if (prov.models && prov.models.length > 0 && prov.enabled) {
+        const onlineModels: ModelOption[] = prov.models.map((m) => ({
+          label: m,
+          provider: prov.name.toLowerCase(),
+          group: prov.name,
+        }))
+        groups.push({ group: prov.name, options: onlineModels })
+      }
+    }
+
+    return groups
+  }, [ollamaModels, providerList])
+
+  const handleSelectModel = (opt: ModelOption) => {
+    setProvider(opt.provider)
+    setModel(opt.label)
+    setShowModelDropdown(false)
+  }
+
+  // Find currently selected option
+  const selectedOption = useMemo(() => {
+    for (const group of modelOptions) {
+      const found = group.options.find((o) => o.label === model && o.provider === provider)
+      if (found) return found
+    }
+    return null
+  }, [modelOptions, model, provider])
 
   return (
     <div className="flex flex-col h-full -m-6">
@@ -148,21 +220,102 @@ export default function Chat() {
           <div>
             <h3 className="text-sm font-semibold text-gray-200">AI Chat</h3>
             <p className="text-xs text-gray-500">
-              {streaming ? 'Streaming...' : `${provider} • ${model || 'No model selected'}`}
+              {streaming ? 'Streaming...' : (
+                <>
+                  {selectedOption ? (
+                    <span className="flex items-center gap-1">
+                      {selectedOption.provider === 'ollama' ? (
+                        <Cpu className="w-3 h-3 text-cyan-400" />
+                      ) : (
+                        <Globe className="w-3 h-3 text-purple-400" />
+                      )}
+                      <span className="text-cyan-400">{selectedOption.provider}</span>
+                      <span className="text-gray-600">/</span>
+                      <span className="text-gray-300">{selectedOption.label}</span>
+                    </span>
+                  ) : (
+                    'No model selected — choose a model above'
+                  )}
+                </>
+              )}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Provider Select */}
-          <select
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-            className="input-field text-xs py-1.5 w-32"
-          >
-            {providers.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+          {/* Unified Model Selector Dropdown */}
+          <div className="relative" ref={modelDropdownRef}>
+            <button
+              onClick={() => setShowModelDropdown(!showModelDropdown)}
+              className="input-field text-xs py-1.5 pr-8 min-w-[180px] flex items-center gap-2 cursor-pointer"
+            >
+              {selectedOption ? (
+                <>
+                  {selectedOption.provider === 'ollama' ? (
+                    <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  ) : (
+                    <Globe className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  )}
+                  <span className="truncate">{selectedOption.label}</span>
+                  <span className="text-[10px] text-gray-600 ml-auto">{selectedOption.provider}</span>
+                </>
+              ) : (
+                <span className="text-gray-500">Select model...</span>
+              )}
+              <ChevronDown className="w-3 h-3 text-gray-500 absolute right-2 top-1/2 -translate-y-1/2" />
+            </button>
+
+            {showModelDropdown && (
+              <div className="absolute right-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                {modelOptions.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-gray-500">
+                    No models available. Install Ollama models or add a provider.
+                  </div>
+                ) : (
+                  modelOptions.flatMap((group, gi) => [
+                    // Section header
+                    <div key={`h-${gi}`} className="px-3 pt-2.5 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-900/95 backdrop-blur-sm">
+                      <div className="flex items-center gap-1.5">
+                        {group.group === 'Local Models' ? (
+                          <Cpu className="w-3 h-3 text-cyan-400" />
+                        ) : (
+                          <Globe className="w-3 h-3 text-purple-400" />
+                        )}
+                        {group.group}
+                      </div>
+                    </div>,
+                    // Options in this group
+                    ...group.options.map((opt, oi) => {
+                      const isSelected = opt.label === model && opt.provider === provider
+                      return (
+                        <button
+                          key={`o-${gi}-${oi}`}
+                          onClick={() => handleSelectModel(opt)}
+                          className={cn(
+                            'w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors',
+                            isSelected
+                              ? 'bg-emerald-500/10 text-emerald-300'
+                              : 'text-gray-300 hover:bg-gray-800'
+                          )}
+                        >
+                          <div className={cn(
+                            'w-1.5 h-1.5 rounded-full shrink-0',
+                            isSelected ? 'bg-emerald-500' : 'bg-gray-600'
+                          )} />
+                          <span className="truncate flex-1">{opt.label}</span>
+                          {opt.running && (
+                            <span className="text-[10px] text-emerald-400 flex items-center gap-1 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              active
+                            </span>
+                          )}
+                        </button>
+                      )
+                    }),
+                  ])
+                )}
+              </div>
+            )}
+          </div>
           {/* Clear Chat */}
           <button
             onClick={clearMessages}

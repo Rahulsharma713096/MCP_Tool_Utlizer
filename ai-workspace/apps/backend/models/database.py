@@ -63,6 +63,11 @@ class MCP(Base):
     status = Column(String(50), default="inactive")  # active, inactive, error
     error_message = Column(Text, nullable=True)
     config = Column(JSON, nullable=True)
+    # GitHub repo configuration for npx-based MCPs
+    github_repo = Column(String(500), nullable=True)
+    github_ref = Column(String(100), nullable=True, default="main")
+    root = Column(String(500), nullable=True)
+    exclude = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

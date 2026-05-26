@@ -54,6 +54,11 @@ class MCPBase(BaseModel):
     auth_type: Optional[str] = None
     capabilities: Optional[list[str]] = None
     config: Optional[dict[str, Any]] = None
+    # GitHub repo configuration for npx-based MCPs
+    github_repo: Optional[str] = None
+    github_ref: Optional[str] = "main"
+    root: Optional[str] = None
+    exclude: Optional[list[str]] = None
 
 
 class MCPCreate(MCPBase):

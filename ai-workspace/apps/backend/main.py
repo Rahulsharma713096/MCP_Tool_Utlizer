@@ -19,7 +19,6 @@ from config.settings import settings
 from api.routes import router
 from core.logging import log_manager, logger
 from services.runtime_service import runtime_service
-from services.mcp_service import MCPService
 
 
 # Rate limiter
@@ -40,11 +39,14 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown: use the same mcp_service instance from routes to clean up running processes
     logger.info("Shutting down...")
     runtime_service.stop_monitoring()
-    mcp_service = MCPService()
-    await mcp_service.cleanup_all()
+    try:
+        from api.routes import mcp_service as routes_mcp_service
+        await routes_mcp_service.cleanup_all()
+    except Exception as e:
+        logger.error("shutdown_cleanup_error", error=str(e))
     log_manager.log_event("app_stopped", level="info")
 
 

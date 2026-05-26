@@ -48,22 +48,6 @@ class ChatService:
 
     # ────────── MCP Tool Helpers ──────────
 
-    def _get_mcp_tool_definitions(self) -> list[dict]:
-        """Get MCP tool definitions in OpenAI function-calling format."""
-        if not self.mcp_service:
-            return []
-        # Use a new event loop or directly call the coroutine
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're inside an async context — create a task
-                future = asyncio.ensure_future(self.mcp_service.get_all_enabled_tools())
-                return []  # Will be populated on first call
-            else:
-                return loop.run_until_complete(self.mcp_service.get_all_enabled_tools())
-        except RuntimeError:
-            return []
-
     async def _collect_tools(self) -> list[dict]:
         """Async: collect tool definitions from running MCPs."""
         if not self.mcp_service:

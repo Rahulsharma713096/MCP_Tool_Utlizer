@@ -12,7 +12,7 @@ interface OllamaModel {
 }
 
 export default function OllamaManager() {
-  const { installed, version, models, loading, setInstalled, setVersion, setModels, setLoading } = useOllamaStore()
+  const { installed, version, models, loading, setInstalled, setVersion, setModels, setLoading, toggleModel, startModelOnly } = useOllamaStore()
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [starting, setStarting] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
@@ -32,6 +32,15 @@ export default function OllamaManager() {
       if (detection.installed) {
         const modelsData = await apiFetch<{ models: OllamaModel[]; count?: number }>('/ollama/models')
         setOllamaModels(modelsData.models)
+        // Populate the store with models and their running status
+        setModels(modelsData.models.map((m) => ({
+          name: m.name,
+          running: false,
+          cpu_usage: 0,
+          ram_usage: 0,
+          size: m.size.toString(),
+          quantization: m.quantization,
+        })))
         if (modelsData.models.length === 0) {
           setApiError('Ollama is installed but no models found. Run "ollama pull <model>" in your terminal to download models.')
         }
@@ -47,10 +56,26 @@ export default function OllamaManager() {
   const startModel = async (modelName: string) => {
     setStarting(modelName)
     try {
+      // Find any currently running model and stop it first (single-model selection)
+      const runningModel = models.find((m) => m.running)
+      if (runningModel && runningModel.name !== modelName) {
+        try {
+          await apiFetch('/ollama/models/stop', {
+            method: 'POST',
+            body: JSON.stringify({ name: runningModel.name }),
+          })
+        } catch {
+          // If stop fails, still try to start the new model
+        }
+      }
+
+      // Start the requested model
       await apiFetch('/ollama/models/start', {
         method: 'POST',
         body: JSON.stringify({ name: modelName, provider: 'ollama' }),
       })
+      // Mark only this model as running, all others as not
+      startModelOnly(modelName)
       toast.success(`Started ${modelName}`)
     } catch (err: any) {
       toast.error(`Failed to start ${modelName}: ${err.message}`)
@@ -65,6 +90,8 @@ export default function OllamaManager() {
         method: 'POST',
         body: JSON.stringify({ name: modelName }),
       })
+      // Mark model as not running in the store
+      toggleModel(modelName)
       toast.success(`Stopped ${modelName}`)
     } catch (err: any) {
       toast.error(`Failed to stop ${modelName}: ${err.message}`)

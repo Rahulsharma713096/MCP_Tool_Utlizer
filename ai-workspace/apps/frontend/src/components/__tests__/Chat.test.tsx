@@ -20,12 +20,17 @@ const createMockStore = () => ({
 
 const mockChatStore = createMockStore()
 
-vi.mock('../../store/store', () => ({
-  useOllamaStore: () => ({ models: [{ name: 'llama3', running: false }] }),
-  useMCPStore: () => ({ mcps: [] }),
-  useProviderStore: () => ({ providers: [{ name: 'OpenRouter', enabled: true }] }),
-  useChatStore: () => mockChatStore,
-}))
+vi.mock('../../store/store', () => {
+  const ollamaState = { models: [{ name: 'llama3', running: false }] }
+  const mcpState = { mcps: [] }
+  const providerState = { providers: [{ name: 'OpenRouter', enabled: true, models: ['gpt-4', 'claude-3'] }] }
+  return {
+    useOllamaStore: (selector?: any) => (selector ? selector(ollamaState) : ollamaState),
+    useMCPStore: (selector?: any) => (selector ? selector(mcpState) : mcpState),
+    useProviderStore: (selector?: any) => (selector ? selector(providerState) : providerState),
+    useChatStore: () => mockChatStore,
+  }
+})
 
 vi.mock('../../lib/utils', () => ({
   apiFetch: vi.fn(),
@@ -63,9 +68,13 @@ describe('Chat', () => {
     expect(chatArea).toBeDefined()
   })
 
-  it('CHATUI-008: provider selector exists', () => {
+  it('CHATUI-008: model selector dropdown exists', () => {
     render(<Chat />)
-    const select = document.querySelector('select')
-    expect(select).toBeDefined()
+    // The old <select> was replaced by a custom dropdown with a 'Select model...' button
+    const matches = screen.getAllByText('llama3')
+    expect(matches.length).toBeGreaterThanOrEqual(1)
+    // Verify the dropdown button exists (it contains the selected model name)
+    const modelButton = matches.find(el => el.closest('.input-field'))
+    expect(modelButton).toBeDefined()
   })
 })

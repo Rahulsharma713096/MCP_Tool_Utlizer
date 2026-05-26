@@ -1,0 +1,14 @@
+1. MCP json adding wraing only show but mcp json added.
+3.  MCP enabling eror 
+INFO:     Application startup complete.
+2026-05-26T16:49:49.719936Z [error    ] enable_mcp_error               error= mcp='Unnamed MCP'
+INFO:     127.0.0.1:56214 - "POST /api/v1/mcps/1779814182269/enable HTTP/1.1" 200 OK
+2026-05-26T16:49:53.825445Z [error    ] enable_mcp_error               error= mcp='Playwright MCP'
+INFO:     127.0.0.1:56217 - "POST /api/v1/mcps/1779813032139/enable HTTP/1.1" 200 OK
+2026-05-26T16:49:55.403927Z [error    ] enable_mcp_error               error= mcp='Database MCP'
+INFO:     127.0.0.1:56220 - "POST /api/v1/mcps/4/enable HTTP/1.1" 200 OK
+2026-05-26T16:49:56.509637Z [error    ] enable_mcp_error               error= mcp='GitHub MCP'
+INFO:     127.0.0.1:56223 - "POST /api/v1/mcps/3/enable HTTP/1.1" 200 OK
+
+
+4.

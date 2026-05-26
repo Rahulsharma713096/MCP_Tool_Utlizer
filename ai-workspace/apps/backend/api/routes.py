@@ -17,7 +17,7 @@ from services.mcp_service import MCPService
 from services.provider_service import ProviderService, provider_service
 from services.chat_service import chat_service
 from services.runtime_service import runtime_service
-from core.security import create_access_token, verify_password, encrypt_api_key
+from core.security import create_access_token
 from core.logging import log_manager
 
 router = APIRouter()
@@ -202,8 +202,9 @@ async def mcp_logs(mcp_id: int, lines: int = Query(50, ge=10, le=500)):
 
 @router.post("/providers", response_model=dict)
 async def add_provider(provider: ProviderCreate):
-    """Add an AI provider."""
-    encrypted_key = encrypt_api_key(provider.api_key) if provider.api_key else None
+    """Add an AI provider.
+    The API key is stored in the provider instance in memory (not persisted to disk).
+    """
     provider_service.get_provider(
         provider_type=provider.name.lower(),
         name=provider.name,

@@ -21,6 +21,17 @@ export interface MCP {
   status: string
   transport: string
   endpoint?: string
+  // Directory for filesystem MCP (allowed directory access)
+  directory?: string
+  // GitHub repo configuration for npx-based MCPs
+  github_repo?: string
+  github_ref?: string
+  root?: string
+  exclude?: string[]
+  command?: string
+  args?: string[]
+  // Environment variables to pass to the MCP server
+  env?: Record<string, string>
 }
 
 export interface Provider {
@@ -93,6 +104,8 @@ interface OllamaState {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   toggleModel: (modelName: string) => void
+  startModelOnly: (modelName: string) => void
+  stopAllModels: () => void
 }
 
 export const useOllamaStore = create<OllamaState>()(
@@ -113,6 +126,17 @@ export const useOllamaStore = create<OllamaState>()(
           models: state.models.map((m) =>
             m.name === modelName ? { ...m, running: !m.running } : m
           ),
+        })),
+      startModelOnly: (modelName) =>
+        set((state) => ({
+          models: state.models.map((m) => ({
+            ...m,
+            running: m.name === modelName,
+          })),
+        })),
+      stopAllModels: () =>
+        set((state) => ({
+          models: state.models.map((m) => ({ ...m, running: false })),
         })),
     }),
     { name: 'ollama-store' }

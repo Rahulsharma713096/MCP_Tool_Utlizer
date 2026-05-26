@@ -196,6 +196,26 @@ class MCPService:
             if mcp.id in self.running_mcps:
                 return {"status": "already_running", "id": mcp.id}
 
+            # Handle HTTP/SSE transport MCPs: always enable (mark as configured), warn if unreachable
+            if mcp.transport in ("http", "sse"):
+                reachable = await self._test_http_endpoint(mcp.endpoint)
+                self._mcp_info[mcp.id] = {
+                    "name": mcp.name,
+                    "type": mcp.type,
+                    "transport": mcp.transport,
+                    "endpoint": mcp.endpoint,
+                }
+                log_manager.log_mcp_event("mcp_enabled", mcp_name=mcp.name, transport=mcp.transport, endpoint=mcp.endpoint)
+                result = {
+                    "status": "started",
+                    "id": mcp.id,
+                    "transport": mcp.transport,
+                }
+                if not reachable:
+                    result["warning"] = f"Endpoint not reachable: {mcp.endpoint}"
+                return result
+
+            # stdio transport: spawn subprocess
             command = mcp.command or ""
             if not command:
                 return {"status": "error", "message": "No command configured for MCP"}
@@ -216,6 +236,21 @@ class MCPService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
+            # Wait briefly and check if the process is still alive
+            await asyncio.sleep(0.8)
+            if process.returncode is not None:
+                # Process died immediately — read stderr to get the error
+                stderr_output = ""
+                try:
+                    stderr_data = await asyncio.wait_for(process.stderr.read(), timeout=2)
+                    stderr_output = stderr_data.decode().strip()[:500]
+                except (asyncio.TimeoutError, Exception):
+                    pass
+                msg = f"Process exited immediately (code {process.returncode})"
+                if stderr_output:
+                    msg += f": {stderr_output}"
+                return {"status": "error", "message": msg}
+
             self.running_mcps[mcp.id] = process
             self._mcp_info[mcp.id] = {
                 "name": mcp.name,
@@ -223,9 +258,6 @@ class MCPService:
                 "transport": mcp.transport,
                 "command": command,
             }
-
-            # Give the MCP server a moment to initialize
-            await asyncio.sleep(0.5)
 
             # Discover available tools
             try:
@@ -268,6 +300,18 @@ class MCPService:
         except Exception as e:
             logger.error("stop_mcp_error", mcp_id=mcp_id, error=str(e))
             return {"status": "error", "message": str(e)}
+
+    async def _test_http_endpoint(self, endpoint: str | None) -> bool:
+        """Test if an HTTP endpoint is reachable. Returns True if reachable."""
+        if not endpoint:
+            return False
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                response = await client.get(endpoint)
+                return response.status_code < 500
+        except Exception:
+            return False
 
     async def test_mcp(self, mcp: MCP) -> dict:
         """Test MCP connectivity/health."""

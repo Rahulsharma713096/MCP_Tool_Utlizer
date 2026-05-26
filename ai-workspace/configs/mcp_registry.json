@@ -6,9 +6,10 @@
       "type": "filesystem",
       "enabled": false,
       "transport": "stdio",
-      "command": "python",
-      "args": ["mcps/filesystem_mcp.py"],
-      "capabilities": ["read_file", "write_file", "list_directory", "search_files"]
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./workspace"],
+      "directory": "./workspace",
+      "capabilities": ["create_directory", "write_file", "read_text_file", "list_directory", "search_files", "move_file", "get_file_info", "directory_tree"]
     },
     {
       "id": "browser",
@@ -47,6 +48,20 @@
       "command": "python",
       "args": ["mcps/python_executor_mcp.py"],
       "capabilities": ["execute_python", "run_script", "install_package"]
+    },
+    {
+      "id": "my-service",
+      "name": "My GitHub MCP Service",
+      "type": "custom",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@owner/my-service"],
+      "github_repo": "owner/repo",
+      "github_ref": "main",
+      "root": "src/main/java",
+      "exclude": ["**/vendor/**", "**/node_modules/**"],
+      "capabilities": ["custom_service"]
     }
   ]
 }
