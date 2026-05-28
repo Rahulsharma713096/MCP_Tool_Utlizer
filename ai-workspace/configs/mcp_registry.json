@@ -7,7 +7,7 @@
       "enabled": false,
       "transport": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./workspace"],
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\Users\hp\Projects\MCP_Tool_Utlizer\ai-workspace\docs"],
       "directory": "./workspace",
       "capabilities": ["create_directory", "write_file", "read_text_file", "list_directory", "search_files", "move_file", "get_file_info", "directory_tree"]
     },

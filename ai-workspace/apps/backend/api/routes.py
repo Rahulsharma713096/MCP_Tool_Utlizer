@@ -14,7 +14,7 @@ from models.schemas import (
 )
 from services.ollama_service import OllamaService
 from services.mcp_service import MCPService
-from services.provider_service import ProviderService, provider_service
+from services.provider_service import ProviderService, provider_service, ProviderFactory
 from services.chat_service import chat_service
 from services.runtime_service import runtime_service
 from core.security import create_access_token
@@ -175,6 +175,24 @@ async def disable_mcp(mcp_id: int):
     return await mcp_service.stop_mcp(mcp_id)
 
 
+@router.get("/mcps/{mcp_id}/status")
+async def mcp_status(mcp_id: int):
+    """Get detailed MCP server status including lifecycle state."""
+    is_running = mcp_id in mcp_service.running_mcps
+    info = mcp_service._mcp_info.get(mcp_id, {})
+    lifecycle = mcp_service._mcp_lifecycle.get(mcp_id, "inactive")
+    tool_count = len(mcp_service._tool_cache.get(mcp_id, []))
+    process = mcp_service.running_mcps.get(mcp_id)
+    return {
+        "id": mcp_id,
+        "running": is_running,
+        "lifecycle": lifecycle,
+        "tool_count": tool_count,
+        "pid": process.pid if process and process.returncode is None else None,
+        "info": info,
+    }
+
+
 @router.get("/mcps/{mcp_id}/test")
 async def test_mcp(mcp_id: int):
     """Test MCP connectivity."""
@@ -198,13 +216,50 @@ async def mcp_logs(mcp_id: int, lines: int = Query(50, ge=10, le=500)):
     return {"logs": await mcp_service.get_mcp_logs(mcp_id, lines)}
 
 
+@router.get("/mcps/config")
+async def get_mcp_config():
+    """Get MCP configurations from registry file."""
+    import json, os
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "configs", "mcp_registry.json")
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+        return data
+    except Exception:
+        return {"mcps": []}
+
+
+@router.post("/mcps/validate")
+async def validate_mcp(config: dict):
+    """Validate an MCP configuration before enabling."""
+    return await mcp_service.validate_mcp_config(config)
+
+
+@router.get("/mcps/prerequisites")
+async def mcp_prerequisites():
+    """Check system prerequisites for running MCP servers."""
+    return await mcp_service.check_prerequisites()
+
+
 # ============== Provider Management ==============
 
 @router.post("/providers", response_model=dict)
 async def add_provider(provider: ProviderCreate):
-    """Add an AI provider.
+    """Add or update an AI provider.
     The API key is stored in the provider instance in memory (not persisted to disk).
+    If the provider already exists, its config (URL, API key) is updated.
+    The API key is only overwritten if a non-empty value is provided.
     """
+    existing = provider_service._find_instance(provider.name)
+    if existing:
+        # Update existing provider config
+        existing.base_url = provider.base_url.rstrip("/")
+        # Only overwrite API key if a new one was actually provided
+        if provider.api_key:
+            existing.api_key = provider.api_key
+            existing._setup_auth()
+        log_manager.log_event("provider_updated", level="info", provider=provider.name)
+        return {"status": "updated", "name": provider.name}
     provider_service.get_provider(
         provider_type=provider.name.lower(),
         name=provider.name,
@@ -224,12 +279,28 @@ async def delete_provider(provider_name: str):
 
 @router.post("/providers/test")
 async def test_provider(provider: ProviderCreate):
-    """Test a provider connection."""
+    """Test a provider connection. Uses stored API key if available."""
+    # Look up existing provider instance to get the API key
+    existing = provider_service._find_instance(provider.name)
+    api_key = provider.api_key or (existing.api_key if existing else "")
     return await provider_service.test_connection(
         provider_type=provider.name.lower(),
         base_url=provider.base_url,
-        api_key=provider.api_key or "",
+        api_key=api_key,
     )
+
+
+@router.get("/providers/config")
+async def get_providers_config():
+    """Get provider configurations from config file (includes models)."""
+    import json, os
+    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "configs", "providers.json")
+    try:
+        with open(config_path) as f:
+            data = json.load(f)
+        return data
+    except Exception:
+        return {"providers": []}
 
 
 @router.get("/providers")
@@ -249,11 +320,81 @@ async def list_providers():
 @router.get("/providers/{provider_name}/models")
 async def list_provider_models(provider_name: str):
     """List available models for a provider."""
-    inst = provider_service.instances.get(provider_name)
+    inst = provider_service._find_instance(provider_name)
     if not inst:
         raise HTTPException(status_code=404, detail="Provider not found")
     models = await inst.list_models()
     return {"provider": provider_name, "models": models}
+
+
+@router.post("/providers/fetch-models")
+async def fetch_provider_models(body: ProviderCreate):
+    """Fetch available models from a provider using its API."""
+    return await provider_service.fetch_models(
+        provider_type=body.name.lower(),
+        base_url=body.base_url,
+        api_key=body.api_key or "",
+    )
+
+
+@router.post("/providers/test-chat")
+async def test_provider_chat(provider: ProviderCreate):
+    """Test a provider with a sample chat message.
+    Validates the provider, API key, builds a sample request, and returns the response.
+    """
+    # Validate provider
+    if not provider.name:
+        raise HTTPException(status_code=400, detail="Provider name is required")
+    if not provider.base_url:
+        raise HTTPException(status_code=400, detail="Base URL is required")
+
+    # Get API key from request or stored instance
+    existing = provider_service._find_instance(provider.name)
+    api_key = provider.api_key or (existing.api_key if existing else "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API key is required for test chat")
+
+    # Create a temporary provider instance for the test
+    test_prov = ProviderFactory.create(provider.name.lower(), provider.name, provider.base_url, api_key)
+
+    # Send a simple chat request
+    try:
+        test_messages = [{"role": "user", "content": "Say hello in one sentence."}]
+        result = await test_prov.chat(model=provider.selected_model or "openai/gpt-4o-mini", messages=test_messages)
+        # Parse OpenAI-style response
+        content = ""
+        if "choices" in result and result["choices"]:
+            content = result["choices"][0].get("message", {}).get("content", "")
+        elif "error" in result:
+            raise HTTPException(status_code=502, detail=f"Provider error: {result['error'].get('message', str(result['error']))}")
+        else:
+            content = str(result)
+        return {"success": True, "response": content}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("test_chat_error", provider=provider.name, error=str(e))
+        raise HTTPException(status_code=502, detail=f"Chat test failed: {str(e)}")
+
+
+@router.post("/providers/validate")
+async def validate_provider(provider: ProviderCreate):
+    """Validate provider configuration (API key, URL, connectivity)."""
+    if not provider.base_url:
+        return {"valid": False, "errors": ["Base URL is required"]}
+    if not provider.base_url.startswith(("http://", "https://")):
+        return {"valid": False, "errors": ["Base URL must start with http:// or https://"]}
+    result = await provider_service.test_connection(
+        provider_type=provider.name.lower(),
+        base_url=provider.base_url,
+        api_key=provider.api_key or "",
+    )
+    return {
+        "valid": result.get("status") == "healthy",
+        "status": result.get("status"),
+        "latency_ms": result.get("latency_ms"),
+        "message": result.get("message"),
+    }
 
 
 # ============== Chat ==============

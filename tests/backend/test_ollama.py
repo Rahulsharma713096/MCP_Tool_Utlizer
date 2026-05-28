@@ -72,7 +72,8 @@ class TestListModels:
             mock_response.json.return_value = {
                 "models": [{"name": "llama3:latest", "size": 4700000000, "details": {"quantization": "Q4_0"}, "modified_at": "2024-01-01T00:00:00Z"}]
             }
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -84,7 +85,8 @@ class TestListModels:
     async def test_list_models_empty_when_api_down(self, ollama_service):
         """list_models returns empty list when API is unreachable."""
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("Connection refused")
             mock_httpx.return_value = mock_client
 
@@ -95,7 +97,8 @@ class TestListModels:
     async def test_list_models_zero_size(self, ollama_service):
         """list_models handles '0' size string correctly."""
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("API down")
             mock_httpx.return_value = mock_client
 
@@ -109,7 +112,8 @@ class TestListModels:
     async def test_list_models_cli_fallback(self, ollama_service):
         """list_models falls back to CLI when API fails."""
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("API unreachable")
             mock_httpx.return_value = mock_client
 
@@ -136,7 +140,8 @@ class TestModelLifecycle:
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.post.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -153,7 +158,8 @@ class TestModelLifecycle:
     async def test_start_model_api_down(self, ollama_service):
         """start_model returns error when Ollama API is unreachable."""
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.post.side_effect = Exception("Connection refused")
             mock_httpx.return_value = mock_client
 
@@ -202,7 +208,8 @@ class TestHealthCheck:
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -213,7 +220,8 @@ class TestHealthCheck:
     async def test_health_check_unreachable(self, ollama_service):
         """health_check returns unreachable on connection error."""
         with patch("services.ollama_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("Connection refused")
             mock_httpx.return_value = mock_client
 

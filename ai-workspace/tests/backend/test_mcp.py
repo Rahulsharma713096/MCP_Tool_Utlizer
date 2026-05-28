@@ -90,6 +90,7 @@ class TestMCPRegistration:
         # First enable
         mock_process = AsyncMock()
         mock_process.pid = 12345
+        mock_process.returncode = None  # Process is still running
         with patch("asyncio.create_subprocess_exec", return_value=mock_process):
             await mcp_service.enable_mcp(sample_mcp)
 

@@ -178,13 +178,19 @@ class TestInputValidation:
     def test_validate_path_allowed(self):
         """validate_path returns True for paths within allowed dirs."""
         from core.security import validate_path
-        assert validate_path("/workspace/test", ["/workspace"]) is True
-        assert validate_path("/documents/file.txt", ["/documents"]) is True
+        import os
+        # Use temp dir to be cross-platform (Windows vs Linux paths)
+        allowed = os.path.normpath(os.path.abspath("/tmp"))
+        test_path = os.path.join(allowed, "test")
+        assert validate_path(test_path, [allowed]) is True
 
     def test_validate_path_not_allowed(self):
         """validate_path returns False for paths outside allowed dirs."""
         from core.security import validate_path
-        assert validate_path("/etc/passwd", ["/workspace"]) is False
+        import os
+        allowed = os.path.normpath(os.path.abspath("/workspace"))
+        assert validate_path("/etc/passwd", [allowed]) is False
+        assert validate_path(os.path.normpath(os.path.abspath("/etc/passwd")), [allowed]) is False
 
 
 # ──────────────────────────────────────────────

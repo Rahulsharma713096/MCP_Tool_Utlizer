@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Trash2, Play, Square, TestTube, RefreshCw, Puzzle, Wifi, Terminal, Code, Copy, CheckCircle2, ChevronDown, ChevronUp, AlertTriangle, XCircle } from 'lucide-react'
+import { Plus, Trash2, Play, Square, TestTube, RefreshCw, Puzzle, Wifi, Terminal, Code, Copy, CheckCircle2, ChevronDown, ChevronUp, AlertTriangle, XCircle, Activity } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn, getStatusDot } from '@/lib/utils'
+import { cn, getStatusDot, apiFetch } from '@/lib/utils'
 import { useMCPStore, type MCP } from '@/store/store'
 
 const defaultMcps: MCP[] = [
@@ -235,12 +235,59 @@ const CUSTOM_JSON_TEMPLATES = [
 export default function MCPStudio() {
   const { mcps, addMcp, removeMcp, toggleMcp } = useMCPStore()
   const [showAddForm, setShowAddForm] = useState(false)
-  const [newMCP, setNewMCP] = useState({ name: '', type: '', transport: 'stdio', endpoint: '', directory: './workspace', github_repo: '', github_ref: 'main', root: '', exclude: '', customJson: '' })
+  const [newMCP, setNewMCP] = useState({ name: '', type: '', transport: 'stdio', endpoint: '', directory: './workspace', github_repo: '', github_ref: 'main', root: '', exclude: '', customJson: '', jsonName: '' })
   const [showGitHubForm, setShowGitHubForm] = useState(false)
   const [showCustomJson, setShowCustomJson] = useState(false)
   const [jsonError, setJsonError] = useState<string | null>(null)
   const [jsonValidation, setJsonValidation] = useState<{ status: 'idle' | 'valid' | 'invalid' | 'missing_fields'; message?: string; fields?: Record<string, any> }>({ status: 'idle' })
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Parse/extract MCP config from various JSON formats
+  const parseMcpJson = (json: string): { entries: Record<string, any>[]; errors: string[] } => {
+    const result: Record<string, any>[] = []
+    const errors: string[] = []
+    try {
+      const parsed = JSON.parse(json)
+
+      // Format 1: mcpServers wrapper (Claude Desktop format)
+      // { "mcpServers": { "name": { "command": "...", "args": [...] } } }
+      if (parsed.mcpServers && typeof parsed.mcpServers === 'object') {
+        for (const [srvName, srvConfig] of Object.entries(parsed.mcpServers)) {
+          if (typeof srvConfig === 'object' && srvConfig !== null) {
+            result.push({ name: srvName, ...(srvConfig as any) })
+          }
+        }
+        if (result.length === 0) {
+          errors.push('mcpServers object is empty or malformed')
+        }
+        return { entries: result, errors }
+      }
+
+      // Format 2: Single MCP config object
+      // { "name": "...", "command": "...", ... }
+      result.push(parsed)
+      return { entries: result, errors }
+    } catch (e) {
+      errors.push((e as Error).message)
+      return { entries: result, errors }
+    }
+  }
+
+  // Normalize an MCP config entry: detect type/transport confusion, set defaults
+  const normalizeMcpEntry = (entry: Record<string, any>): Record<string, any> => {
+    const out = { ...entry }
+    // Detect when user puts a transport value like "stdio"/"http"/"sse" in the "type" field
+    const transportValues = ['stdio', 'http', 'sse']
+    if (out.type && transportValues.includes(out.type.toLowerCase())) {
+      out.transport = out.type.toLowerCase()
+      out.type = 'custom'
+    }
+    // Set default transport if missing
+    if (!out.transport) {
+      out.transport = out.command ? 'stdio' : 'http'
+    }
+    return out
+  }
 
   // Debounced JSON validation as user types
   useEffect(() => {
@@ -252,15 +299,23 @@ export default function MCPStudio() {
     }
 
     debounceRef.current = setTimeout(() => {
-      try {
-        const parsed = JSON.parse(newMCP.customJson)
-        if (!parsed.name || !parsed.type) {
-          setJsonValidation({ status: 'missing_fields', message: 'Missing required fields: "name" and "type"', fields: parsed })
-        } else {
-          setJsonValidation({ status: 'valid', fields: parsed })
-        }
-      } catch (e) {
-        setJsonValidation({ status: 'invalid', message: (e as Error).message })
+      const { entries, errors } = parseMcpJson(newMCP.customJson)
+      if (errors.length > 0) {
+        setJsonValidation({ status: 'invalid', message: errors.join('; ') })
+        return
+      }
+      // Validate each entry
+      const allValid = entries.every((e) => e.name && (e.type || e.command))
+      if (!allValid) {
+        setJsonValidation({
+          status: 'missing_fields',
+          message: 'Each MCP needs "name" and either "type" or "command"',
+          fields: entries[0],
+        })
+      } else {
+        // Normalize first entry for preview
+        const normalized = normalizeMcpEntry(entries[0])
+        setJsonValidation({ status: 'valid', fields: { ...normalized, _entries: entries.length } })
       }
     }, 400)
 
@@ -269,77 +324,104 @@ export default function MCPStudio() {
     }
   }, [newMCP.customJson])
 
-  // Initialize with default MCPs if empty
-  useState(() => {
-    if (mcps.length === 0) {
+  // Initialize with default MCPs if empty (load from backend config first)
+  useEffect(() => {
+    async function loadMcpConfig() {
+      if (mcps.length > 0) return
+      try {
+        const data = await apiFetch<{ mcps: any[] }>('/mcps/config')
+        if (data.mcps && data.mcps.length > 0) {
+          data.mcps.forEach((m, idx) => addMcp({
+            id: Date.now() + idx,
+            name: m.name || 'Unnamed MCP',
+            type: m.type || 'custom',
+            enabled: false,
+            status: 'inactive',
+            transport: m.transport || 'stdio',
+            command: m.command || undefined,
+            args: m.args || undefined,
+            endpoint: m.endpoint || undefined,
+            directory: m.directory || undefined,
+            github_repo: m.github_repo || undefined,
+            github_ref: m.github_ref || undefined,
+            root: m.root || undefined,
+            exclude: m.exclude || undefined,
+          }))
+          return
+        }
+      } catch {
+        // Fallback to defaults
+      }
       defaultMcps.forEach((m) => addMcp(m))
     }
-  })
+    loadMcpConfig()
+  }, [])
 
   const handleAdd = () => {        // Custom JSON mode: parse JSON and create MCP from parsed fields
     if (showCustomJson) {
       if (!newMCP.customJson?.trim()) {
-        setJsonError('JSON is empty — adding with minimal config')
-        // Default to HTTP transport so enable always works (marks as configured)
-        const mcpConfig: MCP = {
-          id: Date.now(),
-          name: 'Unnamed MCP',
-          type: 'custom',
-          enabled: false,
-          status: 'inactive',
-          transport: 'http',
-          endpoint: 'http://localhost:3000',
-        }
-        addMcp(mcpConfig)
-        resetForm()
-        toast.warning('Added MCP with HTTP transport — JSON was empty')
+        setJsonError('JSON is empty — please provide MCP configuration')
+        toast.error('Cannot add MCP: JSON is empty')
         return
       }
-      try {
-        const parsed = JSON.parse(newMCP.customJson)
-        const transport = parsed.transport || 'http'
+
+      const { entries, errors } = parseMcpJson(newMCP.customJson)
+      if (errors.length > 0) {
+        setJsonError(errors.join('; '))
+        toast.error(`Cannot add MCP: ${errors[0]}`)
+        return
+      }
+
+      // Process each entry
+      let addedCount = 0
+      for (let i = 0; i < entries.length; i++) {
+        const raw = entries[i]
+        const entry = normalizeMcpEntry(raw)
+        // Use jsonName override for first entry only if provided
+        const finalName = (i === 0 && newMCP.jsonName.trim()) ? newMCP.jsonName.trim() : (entry.name || `MCP #${i + 1}`)
+        const transport = entry.transport || 'stdio'
+        const isHttpTransport = transport === 'http' || transport === 'sse'
         const mcpConfig: MCP = {
-          id: Date.now(),
-          name: parsed.name || 'Unnamed MCP',
-          type: parsed.type || 'custom',
+          id: Date.now() + i,
+          name: finalName,
+          type: entry.type || 'custom',
           enabled: false,
           status: 'inactive',
           transport: transport,
-          command: parsed.command || undefined,
-          args: parsed.args || undefined,
-          endpoint: parsed.endpoint || undefined,
-          directory: parsed.directory || undefined,
-          github_repo: parsed.github_repo || undefined,
-          github_ref: parsed.github_ref || undefined,
-          root: parsed.root || undefined,
-          exclude: parsed.exclude || undefined,
-          env: parsed.env || undefined,
+          endpoint: entry.endpoint || undefined,
+          directory: entry.directory || undefined,
+          github_repo: entry.github_repo || undefined,
+          github_ref: entry.github_ref || undefined,
+          root: entry.root || undefined,
+          exclude: entry.exclude || undefined,
+          env: entry.env || undefined,
+        }
+        // For stdio transport, ensure command and args are set
+        if (entry.command || !isHttpTransport) {
+          mcpConfig.command = entry.command || 'npx'
+          mcpConfig.args = entry.args
+          // If no args but has command, provide placeholder
+          if (!mcpConfig.args || mcpConfig.args.length === 0) {
+            if (entry.type === 'filesystem') {
+              mcpConfig.args = ['-y', '@modelcontextprotocol/server-filesystem', entry.directory || './workspace']
+            } else if (entry.command?.toLowerCase().includes('npx')) {
+              mcpConfig.args = ['-y', '@owner/my-package']
+            }
+          }
         }
         addMcp(mcpConfig)
-        resetForm()
-        if (!parsed.name || !parsed.type) {
-          toast.warning('Added MCP — missing "name" or "type", using defaults')
-        } else {
-          toast.success(`Added MCP: ${parsed.name}`)
-        }
-        return
-      } catch (e) {
-        // JSON is invalid — add what we can, default to HTTP transport
-        setJsonError(`Invalid JSON: ${(e as Error).message}`)
-        const mcpConfig: MCP = {
-          id: Date.now(),
-          name: 'Invalid JSON MCP',
-          type: 'custom',
-          enabled: false,
-          status: 'inactive',
-          transport: 'http',
-          endpoint: 'http://localhost:3000',
-        }
-        addMcp(mcpConfig)
-        resetForm()
-        toast.warning('Added MCP with HTTP transport — JSON had syntax errors')
-        return
+        addedCount++
       }
+
+      if (entries.length === 1) {
+        const entry = normalizeMcpEntry(entries[0])
+        const displayName = newMCP.jsonName.trim() || entry.name || 'Unnamed MCP'
+        toast.success(`Added MCP: ${displayName} (${entry.type || 'custom'}, ${entry.transport || 'stdio'})`)
+      } else {
+        toast.success(`Added ${addedCount} MCP servers from configuration`)
+      }
+      resetForm()
+      return
     }
 
     // Normal form mode
@@ -358,12 +440,26 @@ export default function MCPStudio() {
       endpoint: newMCP.endpoint || undefined,
     }
 
-    // Filesystem MCP: configure directory access
-    if (newMCP.type === 'filesystem') {
-      const dir = newMCP.directory || './workspace'
-      mcpConfig.directory = dir
-      mcpConfig.command = 'npx'
-      mcpConfig.args = ['-y', '@modelcontextprotocol/server-filesystem', dir]
+    // For stdio transport, set up npx command with type-appropriate defaults
+    if (mcpConfig.transport === 'stdio' || mcpConfig.transport === 'sse') {
+      if (newMCP.type === 'filesystem') {
+        const dir = newMCP.directory || './workspace'
+        mcpConfig.directory = dir
+        mcpConfig.command = 'npx'
+        mcpConfig.args = ['-y', '@modelcontextprotocol/server-filesystem', dir]
+      } else if (newMCP.type === 'browser') {
+        mcpConfig.command = 'npx'
+        mcpConfig.args = ['-y', '@playwright/mcp']
+      } else if (newMCP.type === 'github') {
+        mcpConfig.command = 'npx'
+        mcpConfig.args = ['-y', '@modelcontextprotocol/github']
+      } else if (newMCP.type === 'database') {
+        mcpConfig.command = 'npx'
+        mcpConfig.args = ['-y', '@anthropic/mcp-sqlite', '--db', './data.db']
+      } else if (newMCP.type === 'python') {
+        mcpConfig.command = 'python'
+        mcpConfig.args = ['mcps/python_executor_mcp.py']
+      }
     }
 
     // Add GitHub repo configuration if provided
@@ -387,7 +483,7 @@ export default function MCPStudio() {
   }
 
   const resetForm = () => {
-    setNewMCP({ name: '', type: '', transport: 'stdio', endpoint: '', directory: './workspace', github_repo: '', github_ref: 'main', root: '', exclude: '', customJson: '' })
+    setNewMCP({ name: '', type: '', transport: 'stdio', endpoint: '', directory: './workspace', github_repo: '', github_ref: 'main', root: '', exclude: '', customJson: '', jsonName: '' })
     setShowAddForm(false)
     setShowGitHubForm(false)
     setShowCustomJson(false)
@@ -396,23 +492,20 @@ export default function MCPStudio() {
   }
 
   const toggleMCPStatus = async (mcp: MCP) => {
-    toggleMcp(mcp.id)
     const wasEnabled = mcp.enabled
-
+    // Don't toggle optimistic state until we get a response
     if (wasEnabled) {
       // Disable: stop the MCP server via API
       try {
-        const res = await fetch(`/api/v1/mcps/${mcp.id}/disable`, { method: 'POST' })
-        const data = await res.json()
+        await apiFetch(`/mcps/${mcp.id}/disable`, { method: 'POST' })
+        toggleMcp(mcp.id)
         toast.success(`Disabled MCP: ${mcp.name}`)
-      } catch (err) {
-        toast.error(`Failed to disable: ${err}`)
-        toggleMcp(mcp.id) // revert
+      } catch (err: any) {
+        toast.error(`Failed to disable: ${err.message}`)
       }
     } else {
       // Enable: start the MCP server via API with full config
       try {
-        // For HTTP/SSE transport: only send transport and endpoint — no command/args
         const isHttpMCP = mcp.transport === 'http' || mcp.transport === 'sse'
         const enableBody: Record<string, any> = {
           name: mcp.name,
@@ -422,29 +515,35 @@ export default function MCPStudio() {
         }
         if (!isHttpMCP) {
           enableBody.command = mcp.command || 'npx'
-          enableBody.args = mcp.args || (mcp.type === 'filesystem'
-            ? ['-y', '@modelcontextprotocol/server-filesystem', mcp.directory || './workspace']
-            : undefined)
+          enableBody.args = mcp.args
+          if (!enableBody.args || enableBody.args.length === 0) {
+            if (mcp.type === 'filesystem') {
+              enableBody.args = ['-y', '@modelcontextprotocol/server-filesystem', mcp.directory || './workspace']
+            } else {
+              enableBody.args = ['-y', '@modelcontextprotocol/server-filesystem', './workspace']
+              toast.warning(`${mcp.name}: No command args configured, using filesystem fallback`)
+            }
+          }
         }
 
-        const res = await fetch(`/api/v1/mcps/${mcp.id}/enable`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(enableBody),
-        })
-        const data = await res.json()
+        const data = await apiFetch<{ status: string; pid?: number; warning?: string; message?: string; suggestions?: string[] }>(
+          `/mcps/${mcp.id}/enable`,
+          { method: 'POST', body: JSON.stringify(enableBody) }
+        )
         if (data.status === 'started' || data.status === 'already_running') {
+          toggleMcp(mcp.id)
           toast.success(`Enabled MCP: ${mcp.name}${data.pid ? ` (PID: ${data.pid})` : ''}`)
-          if (data.warning) {
-            toast.warning(data.warning)
-          }
+          if (data.warning) toast.warning(data.warning)
         } else {
-          toast.error(`Failed to enable: ${data.message || 'Unknown error'}`)
-          toggleMcp(mcp.id) // revert
+          // Show detailed error with suggestions
+          let errorMsg = data.message || 'Unknown error'
+          if (data.suggestions && data.suggestions.length > 0) {
+            errorMsg += '\n\nSuggested fixes:\n' + data.suggestions.map((s) => `• ${s}`).join('\n')
+          }
+          toast.error(errorMsg, { duration: 8000 })
         }
-      } catch (err) {
-        toast.error(`Failed to enable: ${err}`)
-        toggleMcp(mcp.id) // revert
+      } catch (err: any) {
+        toast.error(`Failed to enable: ${err.message}`)
       }
     }
   }
@@ -452,8 +551,7 @@ export default function MCPStudio() {
   const testMCP = async (mcp: MCP) => {
     toast.success(`Testing ${mcp.name}...`)
     try {
-      const res = await fetch(`/api/v1/mcps/${mcp.id}/test`)
-      const data = await res.json()
+      const data = await apiFetch<{ status: string }>(`/mcps/${mcp.id}/test`)
       if (data.status === 'healthy') {
         toast.success(`${mcp.name} responded OK`)
       } else if (data.status === 'inactive') {
@@ -461,8 +559,27 @@ export default function MCPStudio() {
       } else {
         toast.error(`${mcp.name}: ${data.status}`)
       }
-    } catch (err) {
-      toast.error(`Test failed: ${err}`)
+    } catch (err: any) {
+      toast.error(`Test failed: ${err.message}`)
+    }
+  }
+
+  // Refresh MCP lifecycle state from backend
+  const refreshMCPStatus = async (mcp: MCP) => {
+    try {
+      const data = await apiFetch<{ running: boolean; lifecycle: string; tool_count: number; pid?: number }>(`/mcps/${mcp.id}/status`)
+      if (data.running) {
+        if (!mcp.enabled) {
+          // Update the store to reflect backend state
+          toggleMcp(mcp.id)
+        }
+        toast.success(`${mcp.name} — ${data.lifecycle}${data.tool_count > 0 ? `, ${data.tool_count} tool(s)` : ''}${data.pid ? ` (PID: ${data.pid})` : ''}`)
+      } else if (mcp.enabled) {
+        toggleMcp(mcp.id)
+        toast.warning(`${mcp.name} is not running on backend`)
+      }
+    } catch (err: any) {
+      toast.error(`Status refresh failed: ${err.message}`)
     }
   }
 
@@ -530,9 +647,24 @@ export default function MCPStudio() {
             <>
               <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/10 mb-4">
                 <p className="text-xs text-amber-300/80">
-                  <strong className="text-amber-400">Custom JSON Configuration</strong> — Paste the full MCP server
-                  configuration as JSON. All fields (name, type, command, args, transport, etc.) are parsed automatically.
+                  <strong className="text-amber-400">Custom JSON Configuration</strong> — Paste MCP server config as JSON.
+                  Supports both single-object format (<code className="text-amber-400">{'{name, command, args}'}</code>) and
+                  Claude Desktop <code className="text-amber-400">{'{mcpServers: {name: {command, args}}}'}</code> format.
+                  If you put a transport value (stdio/http) in the "type" field, it is auto-detected.
                 </p>
+              </div>
+
+              {/* Name Override Field */}
+              <div className="mb-3">
+                <label className="text-xs text-gray-500 block mb-1">
+                  MCP Name <span className="text-gray-600">(override — leave empty to use name from JSON)</span>
+                </label>
+                <input
+                  value={newMCP.jsonName}
+                  onChange={(e) => setNewMCP({ ...newMCP, jsonName: e.target.value })}
+                  placeholder="Leave empty to auto-detect from JSON"
+                  className="input-field"
+                />
               </div>
 
               {/* Preset Template Buttons */}
@@ -616,7 +748,7 @@ export default function MCPStudio() {
                         {jsonValidation.message}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-1">
-                        {Object.entries(jsonValidation.fields).map(([key, value]) => (
+                        {Object.entries(jsonValidation.fields).filter(([k]) => !k.startsWith('_')).map(([key, value]) => (
                           <span key={key} className="px-1.5 py-0.5 text-[10px] rounded bg-gray-800/80 text-gray-500">
                             <span className="text-gray-600">{key}:</span>{' '}
                             <span className={cn(key === 'name' || key === 'type' ? (!value ? 'text-red-400' : 'text-emerald-400') : 'text-cyan-400')}>
@@ -635,6 +767,9 @@ export default function MCPStudio() {
                         <p className="text-xs text-emerald-400 flex items-center gap-1.5">
                           <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                           Valid JSON — all required fields present. Ready to register.
+                          {jsonValidation.fields._entries > 1 && (
+                            <span className="ml-1 text-emerald-300">({jsonValidation.fields._entries} MCPs detected)</span>
+                          )}
                         </p>
                       </div>
                       {/* Parsed Fields Preview Card */}
@@ -642,9 +777,14 @@ export default function MCPStudio() {
                         <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-2 font-semibold">
                           <Code className="w-3 h-3 inline mr-1 -mt-0.5" />
                           Parsed Fields Preview
+                          {jsonValidation.fields._entries > 1 && (
+                            <span className="ml-2 text-gray-600">(showing first entry)</span>
+                          )}
                         </p>
                         <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(jsonValidation.fields).map(([key, value]) => (
+                          {Object.entries(jsonValidation.fields)
+                            .filter(([key]) => !key.startsWith('_'))
+                            .map(([key, value]) => (
                             <span key={key} className="px-2 py-0.5 text-[11px] rounded bg-gray-800 border border-gray-700 text-gray-400">
                               <span className="text-gray-500">{key}:</span>{' '}
                               <span className={cn(
@@ -875,6 +1015,9 @@ export default function MCPStudio() {
               </div>
 
               <div className="flex items-center gap-2">
+                <button onClick={() => refreshMCPStatus(mcp)} className="p-2 rounded-lg hover:bg-gray-800 text-gray-500 hover:text-emerald-400 transition-all" title="Refresh Status">
+                  <Activity className="w-4 h-4" />
+                </button>
                 <button onClick={() => testMCP(mcp)} className="p-2 rounded-lg hover:bg-gray-800 text-gray-500 hover:text-cyan-400 transition-all" title="Test">
                   <TestTube className="w-4 h-4" />
                 </button>

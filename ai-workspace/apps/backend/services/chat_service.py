@@ -34,7 +34,27 @@ class ChatService:
         self.ollama_service = OllamaService()
         self.mcp_service = mcp_service
 
-    def create_session(self, session_id: Optional[str] = None) -> str:
+    def _build_system_prompt(self, tools: list[dict]) -> str:
+        """Build a system prompt that tells the LLM about available MCP tools."""
+        if not tools:
+            return "You are a helpful AI assistant. You can answer questions and help with tasks."
+        tool_names = [t["function"]["name"] for t in tools if "function" in t]
+        tool_desc = "\n".join(
+            f"  - {t.get('function', {}).get('name', 'unknown')}: {t.get('function', {}).get('description', '')}"
+            for t in tools if "function" in t
+        )
+        return (
+            "You are a helpful AI assistant with access to MCP (Model Context Protocol) tools.\n"
+            "You have the following tools available. When the user asks a task that a tool can perform, "
+            "CALL THE TOOL using the function calling interface - do NOT just describe steps.\n"
+            "Available tools:\n"
+            f"{tool_desc}\n\n"
+            "IMPORTANT: Always use a tool when one is applicable. If a user asks you to manage files, "
+            "browse the web, query databases, or perform any automated task, call the appropriate tool "
+            "instead of giving instructions on how to do it manually."
+        )
+
+    def create_session(self, session_id: Optional[str] = None, tools: Optional[list[dict]] = None) -> str:
         """Create a new chat session."""
         sid = session_id or str(uuid.uuid4())
         self.sessions[sid] = {
@@ -44,6 +64,10 @@ class ChatService:
             "active_provider": None,
             "active_model": None,
         }
+        # Add system prompt with tool descriptions if tools are available
+        if tools:
+            system_prompt = self._build_system_prompt(tools)
+            self.sessions[sid]["messages"].append({"role": "system", "content": system_prompt})
         return sid
 
     # ────────── MCP Tool Helpers ──────────
@@ -53,7 +77,10 @@ class ChatService:
         if not self.mcp_service:
             return []
         try:
-            return await self.mcp_service.get_all_enabled_tools()
+            tools = await self.mcp_service.get_all_enabled_tools()
+            if tools:
+                logger.info("mcp_tools_collected", count=len(tools))
+            return tools
         except Exception as e:
             logger.warning("collect_tools_error", error=str(e))
             return []
@@ -122,16 +149,16 @@ class ChatService:
 
         tool_events: Optional list to collect tool_call/tool_result events for the caller.
         """
+        # Collect MCP tools first so system prompt can include them
+        tools = await self._collect_tools()
+
         session = self.sessions.get(session_id)
         if not session:
-            session_id = self.create_session(session_id)
+            session_id = self.create_session(session_id, tools=tools)
             session = self.sessions[session_id]
 
         # Add user message
         session["messages"].append({"role": "user", "content": content})
-
-        # Collect MCP tools
-        tools = await self._collect_tools()
 
         if provider == "ollama":
             response = await self._chat_with_ollama_tools(model or "llama3", session["messages"], tools, tool_events)
@@ -166,15 +193,15 @@ class ChatService:
           - {"type": "tool_result", "name": "...", "content": "..."}
           - {"type": "done", "content": "..."}
         """
+        # Collect MCP tools (do this before session so system prompt can include them)
+        tools = await self._collect_tools()
+
         session = self.sessions.get(session_id)
         if not session:
-            session_id = self.create_session(session_id)
+            session_id = self.create_session(session_id, tools=tools)
             session = self.sessions[session_id]
 
         session["messages"].append({"role": "user", "content": content})
-
-        # Collect MCP tools
-        tools = await self._collect_tools()
 
         if tools:
             logger.info("mcp_tools_available_for_chat", count=len(tools))
@@ -314,6 +341,13 @@ class ChatService:
 
         yield json.dumps({"type": "done", "content": content})
 
+    def _get_provider(self, name: str):
+        """Get provider instance with case-insensitive lookup."""
+        for stored, inst in provider_service.instances.items():
+            if stored.lower() == name.lower():
+                return inst
+        return None
+
     async def _chat_with_provider_tools(
         self,
         provider_name: str,
@@ -323,35 +357,31 @@ class ChatService:
         tool_events: list[dict] | None = None,
     ) -> dict:
         """Chat with a provider, handling tool calls in a loop."""
-        provider_instance = provider_service.instances.get(provider_name)
+        provider_instance = self._get_provider(provider_name)
         if not provider_instance:
-            return {"content": f"⚠️ Provider '{provider_name}' not configured."}
+            return {"content": f"⚠️ Provider '{provider_name}' not configured. Add it in Providers section first."}
 
         iteration = 0
         while iteration < MAX_TOOL_ITERATIONS:
             iteration += 1
 
             try:
-                # Build messages with tools
-                chat_kwargs = {
-                    "model": model or "gpt-3.5-turbo",
-                    "messages": messages,
-                }
-                if tools:
-                    clean_tools = []
-                    for t in tools:
-                        clean_tools.append({
-                            "type": "function",
-                            "function": {
-                                "name": t["function"]["name"],
-                                "description": t["function"]["description"],
-                                "parameters": t["function"]["parameters"],
-                            },
-                        })
-                    chat_kwargs["tools"] = clean_tools
-                    chat_kwargs["stream"] = False
-
-                result = await provider_instance.chat(**chat_kwargs)
+                # Prepare tools in OpenAI function calling format
+                clean_tools = []
+                for t in tools:
+                    clean_tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": t["function"]["name"],
+                            "description": t["function"]["description"],
+                            "parameters": t["function"]["parameters"],
+                        },
+                    })
+                result = await provider_instance.chat(
+                    model=model or "gpt-3.5-turbo",
+                    messages=messages,
+                    tools=clean_tools if clean_tools else None,
+                )
 
                 # Check for tool calls (OpenAI format)
                 if "choices" in result and result["choices"]:
@@ -443,7 +473,7 @@ class ChatService:
 
     async def _chat_with_provider(self, provider_name: str, model: Optional[str], messages: list[dict]) -> dict:
         """Send chat request to an online provider (no tools)."""
-        provider_instance = provider_service.instances.get(provider_name)
+        provider_instance = self._get_provider(provider_name)
         if not provider_instance:
             return {"content": f"⚠️ Provider '{provider_name}' not configured."}
 
@@ -462,7 +492,7 @@ class ChatService:
 
     async def _stream_provider(self, provider_name: str, model: Optional[str], messages: list[dict]) -> AsyncGenerator[str, None]:
         """Stream response from an online provider (no tools)."""
-        provider_instance = provider_service.instances.get(provider_name)
+        provider_instance = self._get_provider(provider_name)
         if not provider_instance:
             yield f"⚠️ Provider '{provider_name}' not configured."
             return

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Play, Square, RotateCw, AlertTriangle, Download, Bot, Cpu, HardDrive, Activity } from 'lucide-react'
+import { Play, Square, RotateCw, AlertTriangle, Download, Bot, Cpu, HardDrive, Activity, MessageSquare, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { apiFetch, cn, formatBytes, getStatusColor, getStatusDot } from '@/lib/utils'
 import { useOllamaStore } from '@/store/store'
@@ -16,6 +16,32 @@ export default function OllamaManager() {
   const [ollamaModels, setOllamaModels] = useState<OllamaModel[]>([])
   const [starting, setStarting] = useState<string | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [testChatModel, setTestChatModel] = useState<string | null>(null)
+  const [testInput, setTestInput] = useState('')
+  const [testResponse, setTestResponse] = useState('')
+  const [testLoading, setTestLoading] = useState(false)
+
+  const handleTestChat = async () => {
+    if (!testChatModel || !testInput.trim()) return
+    setTestLoading(true)
+    setTestResponse('')
+    try {
+      const result = await apiFetch<{ response: string }>('/chat/send', {
+        method: 'POST',
+        body: JSON.stringify({
+          session_id: `test-ollama-${testChatModel}-${Date.now()}`,
+          content: testInput.trim(),
+          provider: 'ollama',
+          model: testChatModel,
+        }),
+      })
+      setTestResponse(result.response || 'No response')
+    } catch (err: any) {
+      setTestResponse(`Error: ${err.message}`)
+    } finally {
+      setTestLoading(false)
+    }
+  }
 
   useEffect(() => {
     checkOllama()
@@ -32,10 +58,18 @@ export default function OllamaManager() {
       if (detection.installed) {
         const modelsData = await apiFetch<{ models: OllamaModel[]; count?: number }>('/ollama/models')
         setOllamaModels(modelsData.models)
-        // Populate the store with models and their running status
+        // Check which model is currently running via Ollama API
+        let runningModel = ''
+        try {
+          const psResult = await apiFetch<{ models?: Array<{ name: string }> }>('/ollama/models')
+          // If we can detect running models, mark them
+          // For now, initialize all as not running — user will start explicitly
+        } catch {
+          // Ignore — Ollama ps endpoint may not be available
+        }
         setModels(modelsData.models.map((m) => ({
           name: m.name,
-          running: false,
+          running: m.name === runningModel,
           cpu_usage: 0,
           ram_usage: 0,
           size: m.size.toString(),
@@ -208,13 +242,22 @@ export default function OllamaManager() {
                   </div>
                   <div className="flex items-center gap-2">
                     {isRunning ? (
-                      <button
-                        onClick={() => stopModel(model.name)}
-                        className="btn-danger flex items-center gap-2 text-sm"
-                      >
-                        <Square className="w-3 h-3" />
-                        Stop
-                      </button>
+                      <>
+                        <button
+                          onClick={() => { setTestChatModel(model.name); setTestInput('Hello, what can you do?'); setTestResponse('') }}
+                          className="btn-secondary flex items-center gap-2 text-sm"
+                        >
+                          <MessageSquare className="w-3 h-3" />
+                          Test Chat
+                        </button>
+                        <button
+                          onClick={() => stopModel(model.name)}
+                          className="btn-danger flex items-center gap-2 text-sm"
+                        >
+                          <Square className="w-3 h-3" />
+                          Stop
+                        </button>
+                      </>
                     ) : (
                       <button
                         onClick={() => startModel(model.name)}
@@ -232,6 +275,42 @@ export default function OllamaManager() {
           )}
         </div>
       </div>
+      {/* Test Chat Dialog */}
+      {testChatModel && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setTestChatModel(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-lg w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-200">Test Chat — {testChatModel}</h3>
+              <button onClick={() => setTestChatModel(null)} className="p-1 hover:bg-gray-800 rounded-lg">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="mb-3">
+              <input
+                value={testInput}
+                onChange={(e) => setTestInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTestChat() } }}
+                placeholder="Type a test message..."
+                className="input-field"
+              />
+            </div>
+            <button
+              onClick={handleTestChat}
+              disabled={testLoading || !testInput.trim()}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              <Send className="w-3.5 h-3.5" />
+              {testLoading ? 'Sending...' : 'Send'}
+            </button>
+            {testResponse && (
+              <div className="mt-4 p-3 rounded-lg bg-gray-800/50 border border-gray-700/30">
+                <p className="text-xs text-gray-500 mb-1">Response:</p>
+                <p className="text-sm text-gray-200 whitespace-pre-wrap">{testResponse}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

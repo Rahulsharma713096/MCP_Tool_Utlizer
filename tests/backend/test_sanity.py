@@ -121,7 +121,7 @@ class TestModuleImports:
         sys.path.insert(0, os.path.abspath(BACKEND_DIR))
         from main import app
         assert app is not None
-        assert app.title == "AI Workspace Platform"
+        assert app.title == "AI Workspace"
 
 
 # ──────────────────────────────────────────────

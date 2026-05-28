@@ -73,7 +73,8 @@ class TestOpenAIProvider:
             mock_response.json.return_value = {
                 "choices": [{"message": {"content": "Hello!"}}]
             }
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.post.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -88,7 +89,8 @@ class TestOpenAIProvider:
             mock_response.json.return_value = {
                 "data": [{"id": "gpt-4"}, {"id": "gpt-3.5-turbo"}]
             }
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -102,7 +104,8 @@ class TestOpenAIProvider:
         with patch("services.provider_service.httpx.AsyncClient") as mock_httpx:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -113,7 +116,8 @@ class TestOpenAIProvider:
     async def test_health_check_unreachable(self, provider):
         """health_check returns unreachable on connection error."""
         with patch("services.provider_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("Connection error")
             mock_httpx.return_value = mock_client
 
@@ -141,7 +145,8 @@ class TestGeminiProvider:
             mock_response.json.return_value = {
                 "candidates": [{"content": {"parts": [{"text": "Hi there!"}]}}]
             }
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.post.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -165,7 +170,8 @@ class TestGeminiProvider:
             mock_response.json.return_value = {
                 "models": [{"name": "models/gemini-pro"}, {"name": "models/gemini-ultra"}]
             }
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 

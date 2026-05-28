@@ -1,21 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Send, Bot, User, StopCircle, Sparkles, Trash2, Wrench, CheckCircle2, XCircle, ChevronDown, Cpu, Globe } from 'lucide-react'
+import { Send, Bot, User, StopCircle, Sparkles, Trash2, Wrench, CheckCircle2, XCircle, ChevronDown, Cpu, Globe, Search, Loader2 } from 'lucide-react'
 import { useChatStore, useOllamaStore, useProviderStore, type ChatMessage } from '@/store/store'
 import { cn, formatTimestamp } from '@/lib/utils'
 
 export default function Chat() {
   const {
-    messages,
-    sessionId,
-    streaming,
-    provider,
-    model,
-    addMessage,
-    setSessionId,
-    setStreaming,
-    setProvider,
-    setModel,
-    clearMessages,
+    messages, sessionId, streaming, provider, model,
+    addMessage, setSessionId, setStreaming, setProvider, setModel, clearMessages,
   } = useChatStore()
 
   const [input, setInput] = useState('')
@@ -24,114 +15,119 @@ export default function Chat() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const accumulatedTokens = useRef('')
 
+  // Model selector state
+  const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [modelSearch, setModelSearch] = useState('')
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  useEffect(() => { scrollToBottom() }, [messages])
+
+  // WebSocket connection with auto-reconnect
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let socket: WebSocket | null = null
 
-  useEffect(() => {
-    // Create WebSocket connection
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/chat/ws`
-    const socket = new WebSocket(wsUrl)
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const wsUrl = `${protocol}//${window.location.host}/api/v1/chat/ws`
+      socket = new WebSocket(wsUrl)
 
-    socket.onopen = () => {
-      console.log('WebSocket connected')
-    }
+      socket.onopen = () => {
+        console.log('WebSocket connected')
+        setStreaming(false)
+      }
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'token') {
-          // Accumulate tokens locally — don't update store until done
-          accumulatedTokens.current += data.content
-        } else if (data.type === 'tool_call') {
-          // LLM requested a tool call
-          const args = typeof data.args === 'string' ? data.args : JSON.stringify(data.args, null, 2)
-          addMessage({
-            role: 'tool',
-            content: `🔧 **Tool Call:** \`${data.name}\`\n\`\`\`json\n${args}\n\`\`\``,
-            timestamp: new Date().toISOString(),
-          })
-        } else if (data.type === 'tool_result') {
-          // Tool execution result
-          const resultStr = typeof data.content === 'string' && data.content.length > 500
-            ? data.content.substring(0, 500) + '...'
-            : (typeof data.content === 'string' ? data.content : JSON.stringify(data.content))
-          addMessage({
-            role: 'tool',
-            content: `✅ **Tool Result:** \`${data.name}\`\n\`\`\`\n${resultStr}\n\`\`\``,
-            timestamp: new Date().toISOString(),
-          })
-        } else if (data.type === 'done') {
-          // Streaming done — add the full accumulated response to the store at once
-          setStreaming(false)
-          if (accumulatedTokens.current.trim()) {
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+          if (data.type === 'token') {
+            accumulatedTokens.current += data.content
+          } else if (data.type === 'tool_call') {
+            const args = typeof data.args === 'string' ? data.args : JSON.stringify(data.args, null, 2)
+            addMessage({
+              role: 'tool',
+              content: `🔧 **Tool Call:** \`${data.name}\`\n\`\`\`json\n${args}\n\`\`\``,
+              timestamp: new Date().toISOString(),
+            })
+          } else if (data.type === 'tool_result') {
+            const resultStr = typeof data.content === 'string' && data.content.length > 500
+              ? data.content.substring(0, 500) + '...'
+              : (typeof data.content === 'string' ? data.content : JSON.stringify(data.content))
+            addMessage({
+              role: 'tool',
+              content: `✅ **Tool Result:** \`${data.name}\`\n\`\`\`\n${resultStr}\n\`\`\``,
+              timestamp: new Date().toISOString(),
+            })
+          } else if (data.type === 'done') {
+            setStreaming(false)
+            if (accumulatedTokens.current.trim()) {
+              addMessage({
+                role: 'assistant',
+                content: accumulatedTokens.current,
+                timestamp: new Date().toISOString(),
+              })
+            }
+            accumulatedTokens.current = ''
+          } else if (data.type === 'error') {
+            setStreaming(false)
             addMessage({
               role: 'assistant',
-              content: accumulatedTokens.current,
+              content: `⚠️ Error: ${data.content}`,
               timestamp: new Date().toISOString(),
             })
           }
-          accumulatedTokens.current = ''
-        } else if (data.type === 'error') {
-          setStreaming(false)
+        } catch (err) {
+          console.error('WebSocket message error:', err)
+        }
+      }
+
+      socket.onerror = (err) => {
+        console.error('WebSocket error:', err)
+      }
+
+      socket.onclose = () => {
+        if (accumulatedTokens.current.trim()) {
           addMessage({
             role: 'assistant',
-            content: `⚠️ Error: ${data.content}`,
+            content: accumulatedTokens.current,
             timestamp: new Date().toISOString(),
           })
+          accumulatedTokens.current = ''
         }
-      } catch (err) {
-        console.error('WebSocket message error:', err)
+        setStreaming(false)
+        // Auto-reconnect after 3 seconds
+        reconnectTimeout = setTimeout(connect, 3000)
       }
+
+      setWs(socket)
     }
 
-    socket.onerror = (err) => {
-      console.error('WebSocket error:', err)
-      setStreaming(false)
-    }
-
-    socket.onclose = () => {
-      // If there's partial accumulated content when connection drops, show it
-      if (accumulatedTokens.current.trim()) {
-        addMessage({
-          role: 'assistant',
-          content: accumulatedTokens.current,
-          timestamp: new Date().toISOString(),
-        })
-        accumulatedTokens.current = ''
-      }
-      setStreaming(false)
-    }
-
-    setWs(socket)
+    connect()
 
     return () => {
-      socket.close()
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      socket?.close()
     }
   }, [])
 
   const handleSend = () => {
     if (!input.trim() || streaming || !ws) return
+    const content = input.trim()
+    setInput('')
 
     const userMessage: ChatMessage = {
       role: 'user',
-      content: input.trim(),
+      content,
       timestamp: new Date().toISOString(),
     }
     addMessage(userMessage)
-    setInput('')
     setStreaming(true)
 
-    ws.send(JSON.stringify({
-      content: input.trim(),
-      provider,
-      model,
-    }))
+    ws.send(JSON.stringify({ content, provider, model }))
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -141,27 +137,15 @@ export default function Chat() {
     }
   }
 
-  // Build unified model option list from local Ollama + online providers
+  // Build unified model option list
   const ollamaModels = useOllamaStore((s) => s.models)
   const providerList = useProviderStore((s) => s.providers)
-  const [showModelDropdown, setShowModelDropdown] = useState(false)
-  const modelDropdownRef = useRef<HTMLDivElement>(null)
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
-        setShowModelDropdown(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
 
   interface ModelOption {
     label: string
     provider: string
     group: string
+    providerType: 'local' | 'online'
     running?: boolean
   }
 
@@ -173,6 +157,7 @@ export default function Chat() {
       label: m.name,
       provider: 'ollama',
       group: 'Local Models',
+      providerType: 'local',
       running: m.running,
     }))
     if (localModels.length > 0) {
@@ -186,6 +171,7 @@ export default function Chat() {
           label: m,
           provider: prov.name.toLowerCase(),
           group: prov.name,
+          providerType: 'online' as const,
         }))
         groups.push({ group: prov.name, options: onlineModels })
       }
@@ -194,13 +180,27 @@ export default function Chat() {
     return groups
   }, [ollamaModels, providerList])
 
+  // Filter models by search
+  const filteredModelOptions = useMemo(() => {
+    if (!modelSearch.trim()) return modelOptions
+    const q = modelSearch.toLowerCase()
+    return modelOptions
+      .map((group) => ({
+        ...group,
+        options: group.options.filter(
+          (o) => o.label.toLowerCase().includes(q) || o.provider.toLowerCase().includes(q)
+        ),
+      }))
+      .filter((group) => group.options.length > 0)
+  }, [modelOptions, modelSearch])
+
   const handleSelectModel = (opt: ModelOption) => {
     setProvider(opt.provider)
     setModel(opt.label)
     setShowModelDropdown(false)
+    setModelSearch('')
   }
 
-  // Find currently selected option
   const selectedOption = useMemo(() => {
     for (const group of modelOptions) {
       const found = group.options.find((o) => o.label === model && o.provider === provider)
@@ -208,6 +208,18 @@ export default function Chat() {
     }
     return null
   }, [modelOptions, model, provider])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false)
+        setModelSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   return (
     <div className="flex flex-col h-full -m-6">
@@ -224,12 +236,14 @@ export default function Chat() {
                 <>
                   {selectedOption ? (
                     <span className="flex items-center gap-1">
-                      {selectedOption.provider === 'ollama' ? (
+                      {selectedOption.providerType === 'local' ? (
                         <Cpu className="w-3 h-3 text-cyan-400" />
                       ) : (
                         <Globe className="w-3 h-3 text-purple-400" />
                       )}
-                      <span className="text-cyan-400">{selectedOption.provider}</span>
+                      <span className={selectedOption.providerType === 'local' ? 'text-cyan-400' : 'text-purple-400'}>
+                        {selectedOption.provider}
+                      </span>
                       <span className="text-gray-600">/</span>
                       <span className="text-gray-300">{selectedOption.label}</span>
                     </span>
@@ -242,21 +256,26 @@ export default function Chat() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {/* Unified Model Selector Dropdown */}
+          {/* Unified Model Selector */}
           <div className="relative" ref={modelDropdownRef}>
             <button
               onClick={() => setShowModelDropdown(!showModelDropdown)}
-              className="input-field text-xs py-1.5 pr-8 min-w-[180px] flex items-center gap-2 cursor-pointer"
+              className="input-field text-xs py-1.5 pr-8 min-w-[200px] flex items-center gap-2 cursor-pointer"
             >
               {selectedOption ? (
                 <>
-                  {selectedOption.provider === 'ollama' ? (
+                  {selectedOption.providerType === 'local' ? (
                     <Cpu className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                   ) : (
                     <Globe className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                   )}
                   <span className="truncate">{selectedOption.label}</span>
-                  <span className="text-[10px] text-gray-600 ml-auto">{selectedOption.provider}</span>
+                  <span className={cn(
+                    'text-[10px] ml-auto px-1.5 py-0.5 rounded',
+                    selectedOption.providerType === 'local' ? 'text-cyan-400 bg-cyan-500/10' : 'text-purple-400 bg-purple-500/10'
+                  )}>
+                    {selectedOption.provider}
+                  </span>
                 </>
               ) : (
                 <span className="text-gray-500">Select model...</span>
@@ -265,54 +284,68 @@ export default function Chat() {
             </button>
 
             {showModelDropdown && (
-              <div className="absolute right-0 top-full mt-1 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 max-h-80 overflow-y-auto">
-                {modelOptions.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-gray-500">
-                    No models available. Install Ollama models or add a provider.
+              <div className="absolute right-0 top-full mt-1 w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-hidden flex flex-col">
+                {/* Search bar */}
+                <div className="p-2 border-b border-gray-800">
+                  <div className="relative">
+                    <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                    <input
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.target.value)}
+                      placeholder="Search models..."
+                      className="w-full pl-7 pr-2 py-1.5 text-xs bg-gray-800 border border-gray-700 rounded-lg text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-cyan-500/50"
+                      autoFocus
+                    />
                   </div>
-                ) : (
-                  modelOptions.flatMap((group, gi) => [
-                    // Section header
-                    <div key={`h-${gi}`} className="px-3 pt-2.5 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-900/95 backdrop-blur-sm">
-                      <div className="flex items-center gap-1.5">
-                        {group.group === 'Local Models' ? (
-                          <Cpu className="w-3 h-3 text-cyan-400" />
-                        ) : (
-                          <Globe className="w-3 h-3 text-purple-400" />
-                        )}
-                        {group.group}
-                      </div>
-                    </div>,
-                    // Options in this group
-                    ...group.options.map((opt, oi) => {
-                      const isSelected = opt.label === model && opt.provider === provider
-                      return (
-                        <button
-                          key={`o-${gi}-${oi}`}
-                          onClick={() => handleSelectModel(opt)}
-                          className={cn(
-                            'w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors',
-                            isSelected
-                              ? 'bg-emerald-500/10 text-emerald-300'
-                              : 'text-gray-300 hover:bg-gray-800'
+                </div>
+
+                {/* Model groups */}
+                <div className="overflow-y-auto flex-1">
+                  {filteredModelOptions.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-gray-500">
+                      {modelSearch ? 'No models match your search' : 'No models available. Configure providers first.'}
+                    </div>
+                  ) : (
+                    filteredModelOptions.map((group, gi) => [
+                      <div key={`h-${gi}`} className="px-3 pt-2.5 pb-1.5 text-[10px] font-semibold text-gray-500 uppercase tracking-wider sticky top-0 bg-gray-900/95 backdrop-blur-sm">
+                        <div className="flex items-center gap-1.5">
+                          {group.group === 'Local Models' ? (
+                            <Cpu className="w-3 h-3 text-cyan-400" />
+                          ) : (
+                            <Globe className="w-3 h-3 text-purple-400" />
                           )}
-                        >
-                          <div className={cn(
-                            'w-1.5 h-1.5 rounded-full shrink-0',
-                            isSelected ? 'bg-emerald-500' : 'bg-gray-600'
-                          )} />
-                          <span className="truncate flex-1">{opt.label}</span>
-                          {opt.running && (
-                            <span className="text-[10px] text-emerald-400 flex items-center gap-1 shrink-0">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              active
-                            </span>
-                          )}
-                        </button>
-                      )
-                    }),
-                  ])
-                )}
+                          {group.group}
+                          <span className="text-[10px] text-gray-600 font-normal">({group.options.length})</span>
+                        </div>
+                      </div>,
+                      ...group.options.map((opt) => {
+                        const isSelected = opt.label === model && opt.provider === provider
+                        return (
+                          <button
+                            key={`${opt.provider}-${opt.label}`}
+                            onClick={() => handleSelectModel(opt)}
+                            className={cn(
+                              'w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs transition-colors',
+                              isSelected ? 'bg-emerald-500/10 text-emerald-300' : 'text-gray-300 hover:bg-gray-800'
+                            )}
+                          >
+                            <div className={cn(
+                              'w-1.5 h-1.5 rounded-full shrink-0',
+                              isSelected ? 'bg-emerald-500' : opt.providerType === 'local' ? 'bg-cyan-500' : 'bg-purple-500'
+                            )} />
+                            <span className="truncate flex-1">{opt.label}</span>
+                            {opt.running && (
+                              <span className="text-[10px] text-emerald-400 flex items-center gap-1 shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                running
+                              </span>
+                            )}
+                          </button>
+                        )
+                      }),
+                    ])
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -336,7 +369,7 @@ export default function Chat() {
             </div>
             <h3 className="text-lg font-semibold text-gray-300">Start a Conversation</h3>
             <p className="text-sm text-gray-500 mt-2 max-w-md">
-              Send a message to begin interacting with your AI models. 
+              Send a message to begin interacting with your AI models.
               Choose a provider and model from the top bar.
             </p>
           </div>
@@ -428,10 +461,7 @@ export default function Chat() {
           />
           {streaming ? (
             <button
-              onClick={() => {
-                ws?.close()
-                setStreaming(false)
-              }}
+              onClick={() => { ws?.close(); setStreaming(false) }}
               className="btn-danger h-[44px] px-4 flex items-center gap-2"
             >
               <StopCircle className="w-4 h-4" />

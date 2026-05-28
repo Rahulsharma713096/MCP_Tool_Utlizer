@@ -21,16 +21,13 @@ export interface MCP {
   status: string
   transport: string
   endpoint?: string
-  // Directory for filesystem MCP (allowed directory access)
   directory?: string
-  // GitHub repo configuration for npx-based MCPs
   github_repo?: string
   github_ref?: string
   root?: string
   exclude?: string[]
   command?: string
   args?: string[]
-  // Environment variables to pass to the MCP server
   env?: Record<string, string>
 }
 
@@ -42,6 +39,8 @@ export interface Provider {
   selected_model?: string
   status: string
   latency_ms?: number
+  // Note: api_key is NOT persisted to localStorage for security
+  // It's kept in-memory only on the frontend side
 }
 
 export interface ChatMessage {
@@ -122,11 +121,19 @@ export const useOllamaStore = create<OllamaState>()(
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error }),
       toggleModel: (modelName) =>
-        set((state) => ({
-          models: state.models.map((m) =>
-            m.name === modelName ? { ...m, running: !m.running } : m
-          ),
-        })),
+        set((state) => {
+          const target = state.models.find((m) => m.name === modelName)
+          if (!target) return state
+          // If turning ON: stop all others (single model constraint)
+          // If turning OFF: just stop this one
+          const newRunning = !target.running
+          return {
+            models: state.models.map((m) => ({
+              ...m,
+              running: m.name === modelName ? newRunning : (newRunning ? false : m.running),
+            })),
+          }
+        }),
       startModelOnly: (modelName) =>
         set((state) => ({
           models: state.models.map((m) => ({
@@ -161,7 +168,12 @@ export const useMCPStore = create<MCPState>()(
       mcps: [],
       loading: false,
       setMcps: (mcps) => set({ mcps }),
-      addMcp: (mcp) => set((state) => ({ mcps: [...state.mcps, mcp] })),
+      addMcp: (mcp) => set((state) => {
+        // Dedup: don't add if same name+type already exists
+        const exists = state.mcps.some((m) => m.name === mcp.name && m.type === mcp.type)
+        if (exists) return state
+        return { mcps: [...state.mcps, mcp] }
+      }),
       removeMcp: (id) =>
         set((state) => ({ mcps: state.mcps.filter((m) => m.id !== id) })),
       toggleMcp: (id) =>
@@ -177,12 +189,16 @@ export const useMCPStore = create<MCPState>()(
 )
 
 // ============== Provider Store ==============
+// NOTE: api_key is NOT stored here for security.
+// Provider registration happens server-side via POST /providers.
+// The store only holds display-safe data (name, models, status).
 
 interface ProviderState {
   providers: Provider[]
   loading: boolean
   setProviders: (providers: Provider[]) => void
   addProvider: (provider: Provider) => void
+  updateProvider: (name: string, updates: Partial<Provider>) => void
   removeProvider: (name: string) => void
   setLoading: (loading: boolean) => void
 }
@@ -194,10 +210,25 @@ export const useProviderStore = create<ProviderState>()(
       loading: false,
       setProviders: (providers) => set({ providers }),
       addProvider: (provider) =>
-        set((state) => ({ providers: [...state.providers, provider] })),
+        set((state) => {
+          // Dedup: if provider with same name exists, update it instead
+          const exists = state.providers.findIndex((p) => p.name.toLowerCase() === provider.name.toLowerCase())
+          if (exists >= 0) {
+            const updated = [...state.providers]
+            updated[exists] = { ...updated[exists], ...provider }
+            return { providers: updated }
+          }
+          return { providers: [...state.providers, provider] }
+        }),
+      updateProvider: (name, updates) =>
+        set((state) => ({
+          providers: state.providers.map((p) =>
+            p.name.toLowerCase() === name.toLowerCase() ? { ...p, ...updates } : p
+          ),
+        })),
       removeProvider: (name) =>
         set((state) => ({
-          providers: state.providers.filter((p) => p.name !== name),
+          providers: state.providers.filter((p) => p.name.toLowerCase() !== name.toLowerCase()),
         })),
       setLoading: (loading) => set({ loading }),
     }),
@@ -237,7 +268,14 @@ export const useChatStore = create<ChatState>()(
       setModel: (model) => set({ model }),
       clearMessages: () => set({ messages: [] }),
     }),
-    { name: 'chat-store' }
+    {
+      name: 'chat-store',
+      partialize: (state) => {
+        // Don't persist streaming state — it's a runtime-only flag
+        const { streaming, ...rest } = state
+        return rest
+      },
+    }
   )
 )
 

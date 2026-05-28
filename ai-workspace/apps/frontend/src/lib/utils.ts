@@ -86,15 +86,23 @@ export function getStatusDot(status: string): string {
 export const API_BASE = '/api/v1'
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const { headers: optionHeaders, ...restOptions } = options || {}
   const response = await fetch(`${API_BASE}${path}`, {
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
+      ...optionHeaders,
+    } as Record<string, string>,
   })
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`)
+    const text = await response.text().catch(() => '')
+    throw new Error(`API error: ${response.status} ${response.statusText}${text ? ` — ${text.slice(0, 300)}` : ''}`)
   }
-  return response.json()
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return response.json()
+  }
+  // Non-JSON response — return as text wrapped in object
+  const text = await response.text()
+  return { text, status: response.status } as unknown as T
 }

@@ -368,7 +368,8 @@ class TestMCPDiagnostics:
         with patch("services.mcp_service.httpx.AsyncClient") as mock_httpx:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.return_value = mock_response
             mock_httpx.return_value = mock_client
 
@@ -383,7 +384,8 @@ class TestMCPDiagnostics:
         from models.database import MCP
 
         with patch("services.mcp_service.httpx.AsyncClient") as mock_httpx:
-            mock_client = AsyncMock().__aenter__.return_value
+            mock_client = MagicMock()
+            mock_client.__aenter__.return_value = mock_client
             mock_client.get.side_effect = Exception("Connection refused")
             mock_httpx.return_value = mock_client
 

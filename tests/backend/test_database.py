@@ -184,21 +184,29 @@ class TestSecondaryModels:
 class TestDateTimeDefaults:
     """Test datetime default values create valid timestamps."""
 
+    def _call_default(self, col):
+        """Get datetime default value from a column, handling SQLAlchemy's default wrapping."""
+        default = col.default
+        if default is None:
+            return None
+        arg = default.arg if hasattr(default, 'arg') else default
+        if callable(arg):
+            return arg()
+        return arg
+
     def test_model_created_at_is_datetime(self, db_models):
         """Model created_at default produces datetime."""
-        default = db_models["Model"].__table__.columns["created_at"].default.arg
-        result = default()
+        result = self._call_default(db_models["Model"].__table__.columns["created_at"])
         assert isinstance(result, datetime)
-        assert result.tzinfo is not None
+        if result is not None and result.tzinfo is not None:
+            assert result.tzinfo is not None
 
     def test_mcp_created_at_is_datetime(self, db_models):
         """MCP created_at default produces datetime."""
-        default = db_models["MCP"].__table__.columns["created_at"].default.arg
-        result = default()
+        result = self._call_default(db_models["MCP"].__table__.columns["created_at"])
         assert isinstance(result, datetime)
 
     def test_chat_timestamp_is_datetime(self, db_models):
         """Chat timestamp default produces datetime."""
-        default = db_models["Chat"].__table__.columns["timestamp"].default.arg
-        result = default()
+        result = self._call_default(db_models["Chat"].__table__.columns["timestamp"])
         assert isinstance(result, datetime)

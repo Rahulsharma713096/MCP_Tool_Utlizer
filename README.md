@@ -6,10 +6,10 @@
 
 ## Features
 
-- **Ollama Runtime Manager** — Detect, list, start/stop local LLM models with automatic CLI fallback
-- **MCP Studio** — Register and manage Model Context Protocol servers (Python, Node.js, npx-based tools)
-- **AI Provider Hub** — Connect to OpenRouter, OpenAI, Gemini, and custom providers
-- **Chat Interface** — WebSocket-powered streaming chat with session history
+- **Ollama Runtime Manager** — Detect, list, start/stop local LLM models with automatic CLI fallback and **Test Chat** to verify model connectivity
+- **MCP Studio** — Register and manage Model Context Protocol servers (Python, Node.js, npx-based tools) with **Claude Desktop `mcpServers` JSON format** support
+- **AI Provider Hub** — Connect to OpenRouter, OpenAI, Gemini, Claude, Z.ai providers with **real API key validation** and **Test Chat**
+- **Chat Interface** — WebSocket-powered streaming chat with session history, **MCP tool integration**, and unified model selector (local + online)
 - **System Monitoring** — Real-time CPU, RAM, GPU metrics with history tracking
 - **Dashboard** — Unified view of models, MCPs, providers, and system health
 - **Security** — JWT authentication, rate limiting, command allow-listing, API key encryption
@@ -92,6 +92,7 @@ All API endpoints are prefixed with `/api/v1`. Interactive docs at [http://local
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/mcps` | Register a new MCP server |
+| GET | `/mcps/config` | Get MCP configurations from registry file |
 | DELETE | `/mcps/{id}` | Delete an MCP server |
 | POST | `/mcps/{id}/enable` | Enable (start) an MCP server |
 | POST | `/mcps/{id}/disable` | Disable (stop) an MCP server |
@@ -103,9 +104,10 @@ All API endpoints are prefixed with `/api/v1`. Interactive docs at [http://local
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/providers` | List configured providers |
-| POST | `/providers` | Add a provider |
+| GET | `/providers/config` | Get provider configs from providers.json (includes models) |
+| POST | `/providers` | Add or update a provider (with API key validation) |
 | DELETE | `/providers/{name}` | Delete a provider |
-| POST | `/providers/test` | Test provider connection |
+| POST | `/providers/test` | Test provider connection (validates API key) |
 | GET | `/providers/{name}/models` | List provider models |
 
 ### Chat
@@ -149,7 +151,7 @@ cd ai-workspace
 python -m pytest tests/backend/ -v --tb=short
 ```
 
-Covers: sanity (10), security (9), database (10), providers (10), MCP (12), Ollama (12), chat (10), data flow (12), recovery (5), performance (9), API integration (3), deployment logic (50)
+Covers: sanity (10), security (16), database (15), providers (14), MCP (11), Ollama (12), chat (9), data flow (11), API integration (24), deployment logic (37)
 
 ### Frontend Tests (20 test cases)
 
@@ -198,7 +200,7 @@ ai-workspace/
 │   │       ├── ollama_service.py   # Ollama detection, model lifecycle, CLI fallback
 │   │       ├── mcp_service.py      # MCP server registration & execution
 │   │       ├── provider_service.py # AI provider management (OpenRouter, etc.)
-│   │       ├── chat_service.py     # Chat sessions, streaming
+│   │       ├── chat_service.py     # Chat sessions, streaming, MCP tool integration
 │   │       └── runtime_service.py  # System metrics, process monitoring
 │   └── frontend/                   # React + TypeScript + Vite (port 5173)
 │       └── src/
@@ -206,15 +208,20 @@ ai-workspace/
 │           │   └── __tests__/      # Component tests (Vitest + jsdom)
 │           ├── pages/              # Page components
 │           │   ├── Dashboard.tsx
-│           │   ├── Chat.tsx
-│           │   ├── MCPStudio.tsx
-│           │   └── OllamaManager.tsx
+│           │   ├── Chat.tsx        # Unified model selector, MCP tool events
+│           │   ├── MCPStudio.tsx   # JSON, mcpServers, GitHub config modes
+│           │   ├── OllamaManager.tsx  # Start/stop + Test Chat
+│           │   └── Providers.tsx   # API key validation + Test Chat
 │           ├── store/              # Zustand state management
 │           └── lib/                # Utilities (apiFetch, etc.)
 ├── tests/
 │   ├── backend/                    # 14 test files — 152 total tests
 │   └── deployment_checks.py        # 37 production readiness checks
 ├── configs/                        # JSON configuration files
+│   ├── providers.json              # Provider configs (with model lists)
+│   ├── mcp_registry.json           # MCP server registry
+│   ├── runtime.json                # Runtime settings
+│   └── ui.json                     # UI configuration
 ├── scripts/                        # Environment validation scripts
 ├── data/                           # SQLite database (auto-created)
 ├── logs/                           # Application logs (auto-created)
@@ -248,6 +255,54 @@ OLLAMA_TIMEOUT=300
 
 ---
 
+## Changelog
+
+### v1.1.0 — Bug Fixes & Feature Enhancements
+
+#### Fixed
+- **Provider models not showing in Chat dropdown** — Online models (OpenAI, Gemini, etc.) now load from `providers.json` config and appear in the unified model selector
+- **404 errors on chat message send** — Fixed case-sensitive provider name lookup (`"openai"` vs `"OpenAI"`) that caused chat to fail when sending messages to online providers
+- **`apiFetch` header override bug** — Fixed `...options` spread overriding default `Content-Type: application/json` header in the API utility
+- **MCP Studio JSON validation errors** — Added auto-detection for transport values (`stdio`/`http`/`sse`) placed in the `type` field; auto-corrects to `type: "custom"` with proper `transport`
+- **MCP enable fails for npx commands** — Backend now extracts base executable name from full Windows paths (`C:\...\npx.cmd` → `npx`) and validates against allowed commands
+- **MCP enable fails with empty args** — Added clear error message when stdio MCP has no command arguments
+- **Provider test always returns "OK"** — Now calls actual `POST /providers/test` endpoint with real health check
+
+#### Added
+- **Ollama Test Chat** — "Test Chat" button on running models to send a test message and verify connectivity
+- **Provider Test Chat** — Chat bubble icon on each provider to open a test dialog and verify API key + model works
+- **Real API key validation** — `POST /providers/test` now validates API key presence before making external API calls
+- **Provider API key update** — `POST /providers` now updates existing provider's API key/URL instead of duplicating
+- **`mcpServers` JSON format support** — MCP Studio now accepts Claude Desktop format (`{"mcpServers": {"name": {"command": "...", "args": [...]}}}`)
+- **MCP JSON name override field** — Users can override the auto-detected name when adding MCPs via JSON
+- **MCP type-specific defaults** — Simple form now auto-sets npx command for browser, GitHub, database, and Python MCP types
+- **`GET /providers/config` endpoint** — Returns provider configurations including model lists from `providers.json`
+- **`GET /mcps/config` endpoint** — Returns MCP configurations from `mcp_registry.json`
+- **System prompt for MCP tools** — Chat now includes a system message describing available MCP tools to guide the LLM to use tool calling instead of giving text instructions
+- **Better error messages** — `apiFetch` now includes response body text in error messages; provider not-configured messages explain what to do
+
+#### Changed
+- **`ProviderService.get_provider`** — Now uses case-insensitive name lookup
+- **`ProviderService.remove_provider`** — Now uses case-insensitive name lookup
+- **`ChatService._get_provider`** — New helper for case-insensitive provider instance lookup
+- **`ChatService._build_system_prompt`** — New method that generates tool-aware system prompts
+- **`ChatService.create_session`** — Now accepts optional `tools` parameter to inject tool descriptions into system prompt
+- **`MCPService.enable_mcp`** — Validates args are non-empty for stdio transport before spawning subprocess
+- **Frontend `Providers.tsx`** — Loads provider config from backend on mount; fallback defaults include model names
+- **Frontend `MCPStudio.tsx`** — Loads MCP defaults from `mcp_registry.json` on mount
+
+### v1.0.0 — Initial Release
+
+- Ollama runtime manager (detect, list, start/stop models)
+- MCP Studio (register, enable/disable, test MCP servers)
+- AI Provider Hub (add/delete providers, test connection)
+- Chat interface (WebSocket streaming, session history)
+- System monitoring (CPU, RAM, GPU metrics)
+- Dashboard (unified overview)
+- Security (JWT auth, rate limiting, command allow-listing)
+
+---
+
 ## Troubleshooting
 
 ### Ollama not detected / 500 on `/api/v1/ollama/detect`
@@ -265,6 +320,14 @@ cd ai-workspace/apps/backend && python main.py
 # 4. Check logs
 cat logs/app.log | findstr ollama
 ```
+
+### Chat returns "Provider not configured"
+
+Ensure the provider is registered via `POST /providers` (Add Provider in the UI) before sending chat messages. The provider name is matched case-insensitively.
+
+### MCP enable fails with "Command not found"
+
+Use `npx` or the full path to `npx.cmd` on Windows. The system extracts the base executable name and checks against allowed commands: `python`, `node`, `python3`, `npx`.
 
 ### Port already in use
 
